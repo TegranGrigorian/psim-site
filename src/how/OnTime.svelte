@@ -45,13 +45,16 @@
   const pick = (i: number) => { who = i; play(); };
 
   // beeswarm-ish stacking: x = arrival relative to class start (left = early)
-  const W = 620, H = 170, X0 = -40, X1 = 15;
+  // charts size to the card so text stays at its natural size
+  let cw = $state(620);
+  const W = $derived(Math.max(300, cw));
+  const H = 170, X0 = -40, X1 = 15;
   const ax = (min: number) => ((Math.max(X0, Math.min(X1, min)) - X0) / (X1 - X0)) * W;
   const dots = $derived.by(() => {
     const bins = new Map<number, number>();
     return trips.map((slack) => {
       const a = -slack;
-      const b = Math.round(ax(a) / 9);
+      const b = Math.round(ax(a) / 9); // 9 px columns
       const k = bins.get(b) ?? 0;
       bins.set(b, k + 1);
       return { x: b * 9, y: H - 8 - k * 8.5, z: zone(slack) };
@@ -62,7 +65,8 @@
   const reps = $derived(runs(iv, 300 + who).map((v) => v * 100));
   const test = $derived(oneSampleT(reps, target));
   const verdict = $derived(test.m > target && test.pAbove < 0.05 ? 'reliable' : test.m < target && test.pBelow < 0.05 ? 'unreliable' : 'unclear');
-  const D0 = 85, D1 = 100, W2 = 620, H2 = 150;
+  const D0 = 85, D1 = 100, H2 = 150;
+  const W2 = $derived(W);
   const bx = (v: number) => ((v - D0) / (D1 - D0)) * W2;
   const bell = $derived.by(() => {
     const pts: string[] = [];
@@ -73,6 +77,7 @@
 </script>
 
 <div class="card ot" use:reveal data-reveal use:inView={(v) => { if (v && !started) { started = true; play(); } }}>
+  <div class="meas" bind:clientWidth={cw}></div>
   <div class="seg" role="group" aria-label="Student group">
     {#each WHO as w, i}<button aria-pressed={who === i} onclick={() => pick(i)}>{w.label}</button>{/each}
   </div>
@@ -90,8 +95,8 @@
       <circle class="d {d.z}" r="3.6" style="--x:{d.x}px; --y:{d.y}px" />
     {/each}
     <line class="axis" x1="0" x2={W} y1={H} y2={H} />
-    {#each [-40, -30, -20, -10, -5, 0, 10] as m}
-      <text class="tk" x={ax(m)} y={H + 18}>{m === 0 ? 'class starts' : m < 0 ? `${-m} min early` : `${m} late`}</text>
+    {#each W < 520 ? [-30, -15, 0] : [-40, -30, -20, -10, 0, 10] as m}
+      <text class="tk" x={ax(m)} y={H + 18} text-anchor={m === -40 ? 'start' : 'middle'}>{m === 0 ? 'class starts' : m < 0 ? `${-m} min early` : `${m} min late`}</text>
     {/each}
   </svg>
   <div class="shares">
@@ -109,7 +114,7 @@
     <line class="tg" x1={bx(target)} x2={bx(target)} y1="6" y2={H2 - 22} />
     <text class="tgl" x={bx(target) + 6} y="20">bar: {target}%</text>
     <line class="axis" x1="0" x2={W2} y1={H2 - 22} y2={H2 - 22} />
-    {#each [86, 88, 90, 92, 94, 96, 98, 100] as v}<text class="tk" x={bx(v)} y={H2 - 6}>{v}%</text>{/each}
+    {#each W < 520 ? [86, 90, 94, 98] : [86, 88, 90, 92, 94, 96, 98] as v}<text class="tk" x={bx(v)} y={H2 - 6}>{v}%</text>{/each}
   </svg>
 
   <h4>3 · The test</h4>
@@ -130,6 +135,7 @@
 
 <style>
   .ot { padding: clamp(16px, 3vw, 28px); }
+  .meas { height: 0; }
   h4 { font-family: var(--serif); font-size: 19px; font-weight: 600; margin: 22px 0 10px; }
   h4 small { font-family: var(--sans); font-size: 13px; color: var(--muted); font-weight: 400; margin-left: 6px; }
   svg { width: 100%; display: block; overflow: visible; }
