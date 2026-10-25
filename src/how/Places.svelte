@@ -79,7 +79,7 @@
         if (f >= 1) { trails.push({ g: t.g, c: t.line.coords }); trails = trails.slice(-24); }
         return f < 1;
       });
-      const old = trails.map((t, i) => ({ type: 'Feature', properties: { c: GROUP_COLOR[t.g], o: 0.12 + (0.4 * (i + 1)) / trails.length }, geometry: { type: 'LineString', coordinates: t.c } }));
+      const old = trails.map((t, i) => ({ type: 'Feature', properties: { c: GROUP_COLOR[t.g], o: 0.25 + (0.4 * (i + 1)) / trails.length }, geometry: { type: 'LineString', coordinates: t.c } }));
       (map.getSource('pl-trails') as maplibregl.GeoJSONSource).setData(fc([...old, ...active]));
       (map.getSource('pl-heads') as maplibregl.GeoJSONSource).setData(fc(heads));
       (map.getSource('pl-pulse') as maplibregl.GeoJSONSource).setData(fc(pulses));
@@ -111,7 +111,7 @@
       map.addSource('pl-homes', { type: 'geojson', data: pt(inputs.housing, (h) => h.units) });
       map.addSource('pl-work', { type: 'geojson', data: pt(inputs.workplaces, (w) => w.jobs) });
       map.addSource('pl-campus', { type: 'geojson', data: pt(inputs.campus, (c) => c.capacity_weight) });
-      map.addLayer({ id: 'pl-trails', type: 'line', source: 'pl-trails', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'c'], 'line-opacity': ['get', 'o'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 2.5, 15, 5] } }, firstLabel);
+      map.addLayer({ id: 'pl-trails', type: 'line', source: 'pl-trails', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'c'], 'line-opacity': ['get', 'o'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3.5, 15, 7] } }, firstLabel);
       map.addLayer({ id: 'pl-homes', type: 'circle', source: 'pl-homes', paint: { 'circle-radius': ['+', 4, ['/', ['sqrt', ['get', 'w']], 4]], 'circle-color': '#ffffff', 'circle-stroke-color': '#00274C', 'circle-stroke-width': 2 } });
       map.addLayer({ id: 'pl-work', type: 'circle', source: 'pl-work', paint: { 'circle-radius': ['+', 3, ['/', ['sqrt', ['get', 'w']], 12]], 'circle-color': '#00274C', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 } });
       map.addLayer({ id: 'pl-campus', type: 'circle', source: 'pl-campus', paint: { 'circle-radius': ['+', 4, ['*', 0.9, ['sqrt', ['get', 'w']]]], 'circle-color': '#FFCB05', 'circle-stroke-color': '#00274C', 'circle-stroke-width': 2 } });
