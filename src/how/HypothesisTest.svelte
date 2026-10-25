@@ -40,10 +40,12 @@
   // ----- chart geometry -----
   // width follows the container so labels stay legible on phones
   let figW = $state(640);
-  const W = $derived(Math.max(340, Math.min(640, figW - 16)));
+  const W = $derived(Math.max(320, figW - 18));
   const H = 250, PAD = 24;
   // value view (steps 0–1)
-  const vdom = $derived([Math.min(muA - 4 * sA, muB - 4 * sB), Math.max(muA + 4 * sA, muB + 4 * sB)]);
+  // wide enough for both curves where they end up, and for A's curve while it sits on B ("fair")
+  const vdom = $derived([Math.min(muA - 4 * sA, muB - 4 * sB, muB - 4 * sA), Math.max(muA + 4 * sA, muB + 4 * sB, muB + 4 * sA)]);
+  const clampX = (x: number) => Math.max(90, Math.min(W - 90, x));
   const vx = (v: number) => PAD + ((v - vdom[0]) / (vdom[1] - vdom[0])) * (W - 2 * PAD);
   // each curve drawn to the same peak height so a narrow one doesn't dwarf a wide one
   function curve(m: number, s: number, close = false) {
@@ -98,10 +100,10 @@
         {#if step === 1}
           <g transition:fade>
             <line class="gap" x1={vx(muB)} x2={vx(muA)} y1="30" y2="30" marker-end="url(#arr)" />
-            <text class="gapt" x={(vx(muB) + vx(muA)) / 2} y="20">gap = {fmt(Math.abs(r.dbar))}</text>
+            <text class="gapt" x={clampX((vx(muB) + vx(muA)) / 2)} y="20">gap = {fmt(Math.abs(r.dbar))}</text>
           </g>
         {:else}
-          <text class="badge good" x={vx(muB)} y="24" transition:fade>Good result: no gap</text>
+          <text class="badge good" x={clampX(vx(muB))} y="24" transition:fade>Good result: no gap</text>
         {/if}
         <text class="tick" x={vx(muB)} y={H - 10}>{fmt(muB)}</text>
         {#if step === 1}<text class="tick" x={vx(muA)} y={H - 10}>{fmt(muA)}</text>{/if}
@@ -193,6 +195,7 @@
   .steps button.done i { background: #8aa6c4; }
   .steps button.on { background: var(--blue); color: #fff; }
   .steps button.on i { background: var(--maize); color: var(--blue); }
+  .fig svg { max-height: 300px; }
   .fig { position: relative; background: #fbfaf6; border: 1px solid var(--rule); border-radius: 12px; padding: 8px 8px 10px; }
   svg { width: 100%; display: block; }
   .stack { display: grid; }
