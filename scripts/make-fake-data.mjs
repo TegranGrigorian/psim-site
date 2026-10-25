@@ -1,11 +1,29 @@
 // Generates FAKE summary files (SCHEMA.md §5) so the site can be built and
 // tested before psim-tools analyze exists. Nothing here is a research result.
 // Usage: node scripts/make-fake-data.mjs   (deterministic, seed 42)
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', 'data');
+const HERE = dirname(fileURLToPath(import.meta.url));
+const ROOT = join(HERE, '..', '..', 'data');
+
+// Real route shapes from OpenStreetMap (scripts/fetch-osm-routes.mjs), if cached. Service levels stay invented.
+const NEW_IN_REDESIGN = new Set(['66', '32']);
+function osmRoutes(slug) {
+  const f = join(HERE, 'osm', `${slug}_routes.geojson`);
+  if (!existsSync(f)) return null;
+  const r = rng(7);
+  const routes = [], newRoutes = [];
+  for (const ft of JSON.parse(readFileSync(f, 'utf8')).features) {
+    const { ref, name, agency } = ft.properties;
+    const id = `${agency === 'umich' ? 'UM' : 'AA'}-${ref}`;
+    const trips = Math.round((agency === 'umich' ? 110 : 40) + r() * 50);
+    if (NEW_IN_REDESIGN.has(ref)) newRoutes.push([id, agency, `${name} (new)`, ft.geometry.coordinates, Math.round(trips * 0.8)]);
+    else routes.push([id, agency, name, ft.geometry.coordinates, trips]);
+  }
+  return { routes, newRoutes };
+}
 
 function rng(seed) {
   let a = seed >>> 0;
@@ -260,6 +278,11 @@ function build(slug, city, scen) {
 function write(path, obj) {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, JSON.stringify(obj));
+}
+
+for (const [slug, city] of Object.entries(CITIES)) {
+  const o = osmRoutes(slug);
+  if (o) Object.assign(city, o);
 }
 
 const index = { schema_version: '0.1', fake: true, cities: [] };
