@@ -36,3 +36,10 @@ export function countUp(node: HTMLElement, p: { to: number; digits?: number; suf
   io.observe(node);
   return { destroy: () => { io.disconnect(); cancelAnimationFrame(raf); } };
 }
+
+/** Calls `cb(true)` when the node enters view and `cb(false)` when it leaves. */
+export function inView(node: HTMLElement, cb: (v: boolean) => void) {
+  const io = new IntersectionObserver(([e]) => cb(e.isIntersecting), { threshold: 0.25 });
+  io.observe(node);
+  return { destroy: () => io.disconnect() };
+}
