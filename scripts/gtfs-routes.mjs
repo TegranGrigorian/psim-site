@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const DATE = '20261027'; // a Tuesday during fall term
 const [city, ...feeds] = process.argv.slice(2);
-const BBOX = { ann_arbor: [-83.80, 42.22, -83.66, 42.34] }[city];
+const BBOX = { ann_arbor: [-83.80, 42.22, -83.66, 42.34], madison: [-89.52, 43.02, -89.28, 43.15] }[city];
 if (!BBOX || !feeds.length) { console.error('usage: gtfs-routes.mjs ann_arbor agency=dir ...'); process.exit(1); }
 
 /** CSV with quoted fields (GTFS headsigns and descriptions contain commas). */
@@ -76,6 +76,6 @@ for (const arg of feeds) {
   }
 }
 const out = join(dirname(fileURLToPath(import.meta.url)), 'shapes', `${city}_routes.geojson`);
-writeFileSync(out, JSON.stringify({ type: 'FeatureCollection', source: 'TheRide (AAATA) and U-M Transportation GTFS feeds', features }));
+writeFileSync(out, JSON.stringify({ type: 'FeatureCollection', source: `GTFS: ${feeds.map((f) => f.split('=')[0]).join(', ')}`, features }));
 console.log(features.length, 'routes,', features.reduce((a, f) => a + f.geometry.coordinates.length, 0), 'points ->', out);
 for (const f of features) console.log(' ', f.properties.agency, f.properties.ref, f.properties.name, f.properties.trips_per_weekday);
