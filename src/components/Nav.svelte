@@ -5,10 +5,10 @@
   let { cities = [], page = 'home' }: { cities?: CityIndex[]; page?: 'home' | 'how' } = $props();
   let open = $state(false);
   let scrolled = $state(false);
-  const home = page === 'home' ? '' : './index.html';
-  const links = [
+  const home = $derived(page === 'home' ? '' : './index.html');
+  const links = $derived([
     [`${home}#gap`, 'The gap'], [`${home}#where`, 'Where'], [`${home}#when`, 'When'], [`${home}#redesign`, 'Redesign'], [`${home}#elsewhere`, 'Elsewhere'],
-  ];
+  ]);
 
   function pick(slug: string) {
     app.city = slug;
