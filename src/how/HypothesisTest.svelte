@@ -38,12 +38,16 @@
   $effect(() => () => clearInterval(auto));
 
   // ----- chart geometry -----
-  const W = 640, H = 250, PAD = 28;
+  // width follows the container so labels stay legible on phones
+  let figW = $state(640);
+  const W = $derived(Math.max(340, Math.min(640, figW - 16)));
+  const H = 250, PAD = 24;
   // value view (steps 0–1)
   const vdom = $derived([Math.min(muA - 4 * sA, muB - 4 * sB), Math.max(muA + 4 * sA, muB + 4 * sB)]);
   const vx = (v: number) => PAD + ((v - vdom[0]) / (vdom[1] - vdom[0])) * (W - 2 * PAD);
-  const peak = $derived(Math.max(normalPdf(0, 0, sA), normalPdf(0, 0, sB)));
+  // each curve drawn to the same peak height so a narrow one doesn't dwarf a wide one
   function curve(m: number, s: number, close = false) {
+    const peak = normalPdf(0, 0, s);
     const pts: string[] = [];
     for (let i = 0; i <= 140; i++) {
       const v = vdom[0] + ((vdom[1] - vdom[0]) * i) / 140;
@@ -55,7 +59,7 @@
   const LIM = 5;
   const sx = (z: number) => PAD + ((z + LIM) / (2 * LIM)) * (W - 2 * PAD);
   const sy = (z: number) => H - 30 - (normalPdf(z, 0, 1) / normalPdf(0, 0, 1)) * (H - 80);
-  const nullPath = (() => { const p: string[] = []; for (let i = 0; i <= 160; i++) { const z = -LIM + (2 * LIM * i) / 160; p.push(`${sx(z).toFixed(1)},${sy(z).toFixed(1)}`); } return 'M' + p.join('L'); })();
+  const nullPath = $derived.by(() => { const p: string[] = []; for (let i = 0; i <= 160; i++) { const z = -LIM + (2 * LIM * i) / 160; p.push(`${sx(z).toFixed(1)},${sy(z).toFixed(1)}`); } return 'M' + p.join('L'); });
   function tail(from: number, to: number) {
     const p: string[] = [`${sx(from)},${H - 30}`];
     for (let i = 0; i <= 40; i++) { const z = from + ((to - from) * i) / 40; p.push(`${sx(z).toFixed(1)},${sy(z).toFixed(1)}`); }
@@ -80,7 +84,7 @@
     {/each}
   </ol>
 
-  <div class="fig">
+  <div class="fig" bind:clientWidth={figW}>
     <div class="stack">
     {#if step < 2}
       <svg viewBox="0 0 {W} {H}" transition:fade={{ duration: 300 }} role="img" aria-label="Two distributions">
@@ -106,11 +110,11 @@
     {:else}
       <svg viewBox="0 0 {W} {H}" transition:fade={{ duration: 300 }} role="img" aria-label="Null distribution in standard errors, with our result marked">
         <line class="ax" x1={PAD} x2={W - PAD} y1={H - 30} y2={H - 30} />
-        {#each [-4, -3, -2, -1, 0, 1, 2, 3, 4] as z}
+        {#each W < 480 ? [-4, -2, 0, 2, 4] : [-4, -3, -2, -1, 0, 1, 2, 3, 4] as z}
           <text class="tick" x={sx(z)} y={H - 10}>{z === 0 ? 'fair' : `${z > 0 ? '+' : '−'}${Math.abs(z)}`}</text>
         {/each}
         <rect class="zone" x={sx(-1.98)} y="40" width={sx(1.98) - sx(-1.98)} height={H - 70} />
-        <text class="zl" x={sx(0)} y="34">95% of “just luck” gaps land in here</text>
+        <text class="zl" x={sx(0)} y="34">95% of “just luck” gaps land here</text>
         <path class="null" d={nullPath} />
         {#if step >= 3 && onChart}
           <path class="tailfill" d={tail(tAbs, LIM)} transition:fade />
@@ -122,12 +126,12 @@
           <text class="obst" x={sx(tPos)} y="62">our gap: {r.t.toFixed(1)} SE</text>
         {:else}
           <g class="off" transform="translate({r.t > 0 ? W - PAD : PAD} 0)">
-            <path d="M{r.t > 0 ? -34 : 34} {H - 70} L0 {H - 70}" class="offarrow" marker-end="url(#arr2)" />
-            <text x={r.t > 0 ? -6 : 6} y={H - 82} text-anchor={r.t > 0 ? 'end' : 'start'}>our gap: {Math.round(tAbs)} SE away</text>
-            <text class="small" x={r.t > 0 ? -6 : 6} y={H - 50} text-anchor={r.t > 0 ? 'end' : 'start'}>off the chart, about {Math.round(tAbs / (2 * LIM))}× its width</text>
+            <path d="M{r.t > 0 ? -34 : 34} 104 L0 104" class="offarrow" marker-end="url(#arr2)" />
+            <text x={r.t > 0 ? -6 : 6} y="90" text-anchor={r.t > 0 ? 'end' : 'start'}>our gap: {Math.round(tAbs)} SE away</text>
+            <text class="small" x={r.t > 0 ? -6 : 6} y="126" text-anchor={r.t > 0 ? 'end' : 'start'}>off the chart, {Math.round(tAbs / (2 * LIM))}× its width</text>
           </g>
         {/if}
-        <text class="axl" x={W - PAD} y={H - 34} text-anchor="end">standard errors from fair →</text>
+        <text class="axl" x={PAD} y="18">units: standard errors (SE) from fair</text>
         <defs><marker id="arr2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10z" fill="#c0392b" /></marker></defs>
       </svg>
     {/if}
