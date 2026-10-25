@@ -8,6 +8,7 @@
   import Redesign from './components/Redesign.svelte';
   import Elsewhere from './components/Elsewhere.svelte';
   import Hypotheses from './components/Hypotheses.svelte';
+  import Footer from './components/Footer.svelte';
   import { reveal } from './lib/actions';
   import { app } from './lib/state.svelte';
   import { METRICS } from './lib/format';
@@ -151,12 +152,7 @@
     </section>
   </main>
 
-  <footer>
-    <div class="wrap">
-      <p><b>Who Is the Bus For?</b> Tegran Grigorian · HISTART 394 · University of Michigan</p>
-      <p class="note">The simulation code and analysis are the author’s own work. This website was built with an agentic AI assistant, as disclosed in the project’s AI policy.</p>
-    </div>
-  </footer>
+  <Footer />
 {/if}
 
 <style>
@@ -169,8 +165,5 @@
   .method ol { padding-left: 1.2em; margin: 0 0 32px; display: grid; gap: 14px; }
   .method ul { padding-left: 1.2em; display: grid; gap: 8px; color: #36424f; }
   .method h3 { font-size: 24px; margin-bottom: 14px; }
-  footer { background: var(--blue); color: #cfdbe9; padding: 40px 0 48px; margin-top: 40px; }
-  footer p { margin: 0 0 8px; } footer b { color: #fff; }
-  footer .note { color: #94a8c0; max-width: 70ch; }
   @media (max-width: 800px) { .method { grid-template-columns: 1fr; } }
 </style>
