@@ -105,10 +105,14 @@
 
       m.addLayer({ id: 'hood-fill', type: 'fill', source: 'hoods', paint: { 'fill-color': fillExpr(lo, hi), 'fill-opacity': ['case', ['boolean', ['feature-state', 'on'], false], 0.7, 0.5], 'fill-color-transition': { duration: 600 } } }, firstLabel);
       m.addLayer({ id: 'hood-line', type: 'line', source: 'hoods', paint: { 'line-color': '#ffffff', 'line-width': ['case', ['boolean', ['feature-state', 'on'], false], 3, 1.2] } }, firstLabel);
-      const width: any = ['interpolate', ['linear'], ['zoom'], 11, ['+', 1.5, ['/', ['coalesce', ['get', 'trips_per_weekday'], 40], 60]], 15, ['+', 4, ['/', ['coalesce', ['get', 'trips_per_weekday'], 40], 25]]];
-      m.addLayer({ id: 'route-case', type: 'line', source: 'routes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['+', width, 3] } });
-      m.addLayer({ id: 'route-line', type: 'line', source: 'routes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': lineColor, 'line-width': width } });
-      m.addLayer({ id: 'route-flow', type: 'line', source: 'routes', layout: { 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-opacity': 0.55, 'line-width': ['*', width, 0.45], 'line-dasharray': DASH_FRAMES[0] } });
+      // zoom must stay at the top of the expression, so each layer gets its own scaled copy
+      const trips = ['min', 160, ['coalesce', ['get', 'trips_per_weekday'], 40]];
+      const width = (k = 1, add = 0): any => ['interpolate', ['linear'], ['zoom'],
+        11, ['+', add, ['*', k, ['+', 1.5, ['/', trips, 60]]]],
+        15, ['+', add, ['*', k, ['+', 4, ['/', trips, 25]]]]];
+      m.addLayer({ id: 'route-case', type: 'line', source: 'routes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': width(1, 3) } });
+      m.addLayer({ id: 'route-line', type: 'line', source: 'routes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': lineColor, 'line-width': width() } });
+      m.addLayer({ id: 'route-flow', type: 'line', source: 'routes', layout: { 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-opacity': 0.55, 'line-width': width(0.45), 'line-dasharray': DASH_FRAMES[0] } });
       m.addLayer({ id: 'route-arrows', type: 'symbol', source: 'routes', layout: { 'symbol-placement': 'line', 'symbol-spacing': 110, 'icon-image': 'chevron', 'icon-size': ['interpolate', ['linear'], ['zoom'], 11, 0.55, 15, 1], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true } });
       m.addLayer({ id: 'bus-halo', type: 'circle', source: 'buses', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 6, 15, 11], 'circle-color': '#ffffff', 'circle-opacity': 0.9, 'circle-blur': 0.3 } });
       m.addLayer({ id: 'bus-dot', type: 'circle', source: 'buses', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 3.5, 15, 7], 'circle-color': ['case', ['boolean', ['get', 'is_new'], false], NEW_ROUTE, ['match', ['get', 'agency'], 'umich', AGENCY.umich, AGENCY.theride]], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 } });
