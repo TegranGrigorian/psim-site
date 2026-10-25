@@ -8,7 +8,8 @@ export type MetricKey =
   | 'failure_rate';
 
 export interface Interval { mean: number; ci_low: number; ci_high: number }
-export type Metrics = Record<MetricKey, Interval>;
+// on_time_rate is a proposed addition (not yet in SCHEMA.md): null for groups with no required trips.
+export type Metrics = Record<MetricKey, Interval> & { on_time_rate?: Interval | null };
 
 export type Dimension = 'group' | 'tenure' | 'neighborhood' | 'shift_pattern' | 'age_band' | 'income_band';
 
