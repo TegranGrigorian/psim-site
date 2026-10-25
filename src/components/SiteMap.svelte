@@ -1,5 +1,6 @@
 <script lang="ts">
   import * as maplibregl from 'maplibre-gl';
+  import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
   import { onMount } from 'svelte';
   import { app } from '../lib/state.svelte';
   import { HEAT, fmt, metricMeta, METRICS } from '../lib/format';
@@ -7,9 +8,13 @@
 
   let { bundle, city, hasRedesign }: { bundle: Bundle; city: CityIndex; hasRedesign: boolean } = $props();
 
+  // The inlined worker breaks under the production bundler; serve it as its own asset.
+  maplibregl.setWorkerUrl(workerUrl);
+
   let el: HTMLDivElement;
   let map: maplibregl.Map | undefined;
   let ready = $state(false);
+  let markers: maplibregl.Marker[] = [];
   let selected = $state<string | null>(null);
   let showRoutes = $state(true);
 
@@ -35,22 +40,30 @@
     } as any;
   }
 
+  function buildMarkers() {
+    markers.forEach((k) => k.remove());
+    markers = bundle.hoods.features.map((f) => {
+      const ring = f.geometry.coordinates[0];
+      const c = [ring.reduce((a, p) => a + p[0], 0) / ring.length, ring.reduce((a, p) => a + p[1], 0) / ring.length] as [number, number];
+      const d = document.createElement('div');
+      d.className = 'hood-label';
+      d.textContent = f.properties.name;
+      return new maplibregl.Marker({ element: d }).setLngLat(c).addTo(map!);
+    });
+  }
+
   onMount(() => {
     map = new maplibregl.Map({
       container: el,
       bounds: city.bbox,
       fitBoundsOptions: { padding: 24 },
-      attributionControl: { compact: true },
+      attributionControl: false,
       cooperativeGestures: true,
       style: {
         version: 8,
-        glyphs: 'https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf',
-        sources: {
-          base: { type: 'raster', tileSize: 256, attribution: '© OpenStreetMap, © CARTO', tiles: ['https://a.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}.png'] },
-        },
+        sources: {},
         layers: [
           { id: 'bg', type: 'background', paint: { 'background-color': '#eeebe0' } },
-          { id: 'base', type: 'raster', source: 'base', paint: { 'raster-opacity': 0.55 } },
         ],
       },
     });
@@ -64,7 +77,8 @@
       m.addLayer({ id: 'hood-line', type: 'line', source: 'hoods', paint: { 'line-color': '#ffffff', 'line-width': ['case', ['boolean', ['feature-state', 'on'], false], 3, 1.2] } });
       m.addLayer({ id: 'route-case', type: 'line', source: 'routes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#00274C', 'line-width': ['+', 2.5, ['/', ['coalesce', ['get', 'trips_per_weekday'], 30], 40]], 'line-opacity': 0.9 } });
       m.addLayer({ id: 'route-line', type: 'line', source: 'routes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['case', ['boolean', ['get', 'is_new'], false], '#FF7A2F', '#FFCB05'], 'line-width': ['/', ['coalesce', ['get', 'trips_per_weekday'], 30], 60] } });
-      m.addLayer({ id: 'hood-label', type: 'symbol', source: 'hoods', layout: { 'text-field': ['get', 'name'], 'text-font': ['Open Sans Regular'], 'text-size': 12, 'text-allow-overlap': false }, paint: { 'text-color': '#00274C', 'text-halo-color': 'rgba(255,255,255,0.9)', 'text-halo-width': 1.6 } });
+
+      buildMarkers();
 
       let hover: number | null = null;
       const setOn = (id: number | null, on: boolean) => id !== null && m.setFeatureState({ source: 'hoods', id }, { on });
@@ -91,6 +105,7 @@
     city.slug;
     if (!ready || !map) return;
     selected = null;
+    buildMarkers();
     map.fitBounds(city.bbox, { padding: 24, duration: 900 });
   });
   $effect(() => {
@@ -167,6 +182,7 @@
 </div>
 
 <style>
+  :global(.hood-label) { pointer-events: none; font-size: 11.5px; font-weight: 600; color: var(--blue); text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 5px #fff; white-space: nowrap; }
   .controls { display: flex; gap: 12px 18px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
   .toggle { font-size: 14px; display: inline-flex; gap: 8px; align-items: center; cursor: pointer; accent-color: var(--blue); }
   .grid { display: grid; grid-template-columns: 1fr 320px; gap: 18px; }

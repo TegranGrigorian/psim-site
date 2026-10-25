@@ -166,12 +166,12 @@ function build(slug, city, scen) {
 
   GROUPS.forEach((g) => push('group', g, N * weights[g], groupVals(city, g, scen)));
 
-  const sub = (dim, entries) => entries.forEach(([value, mixw, f]) => {
+  const sub = (dim, entries) => { const total = entries.reduce((a, [, w]) => a + Object.values(w).reduce((x, y) => x + y, 0), 0); entries.forEach(([value, mixw, f]) => {
     const w = Object.fromEntries(GROUPS.map((g) => [g, (mixw[g] ?? 0.0001)]));
     const tot = Object.values(w).reduce((a, b) => a + b, 0);
     const v = weightedAvg(city, scen, w).map((x, i) => x * (i >= 4 || i === 3 ? f : f) );
-    push(dim, value, N * Math.min(0.6, tot), v);
-  });
+    push(dim, value, (N * tot) / total, v);
+  }); };
   sub('tenure', [
     ['own', { resident_worker: 0.45, retired: 0.4, university_staff: 0.1, shift_worker: 0.05 }, 1.02],
     ['rent', { resident_worker: 0.3, shift_worker: 0.2, graduate: 0.2, university_staff: 0.1, undergraduate: 0.2 }, 0.97],

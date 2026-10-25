@@ -53,7 +53,9 @@
 
 <style>
   .hero { position: relative; background: var(--blue); color: #fff; overflow: hidden; padding: clamp(72px, 12vw, 150px) 0 clamp(48px, 7vw, 80px); }
-  .lines { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0.95; }
+  .lines { position: absolute; top: 0; bottom: 0; right: 0; width: 100%; height: 100%; opacity: 0.9; }
+  @media (min-width: 900px) { .lines { left: 38%; width: 62%; } }
+  @media (max-width: 899px) { .lines { opacity: 0.35; } }
   .l { stroke-width: 5; stroke-dasharray: 1800; stroke-dashoffset: 1800; animation: draw 2.6s var(--ease) forwards; }
   .l1 { stroke: var(--maize); }
   .l2 { stroke: #2f65a7; animation-delay: 0.35s; }
