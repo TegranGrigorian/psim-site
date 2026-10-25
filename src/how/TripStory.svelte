@@ -25,6 +25,7 @@
       ],
     },
   };
+  const STOPS: [[number, number], string][] = [[A, 'Stop A'], [[470, 110], 'Stop B'], [B, 'Stop C'], [[760, 200], 'Stop D']];
   const COLOR = { walk: '#8393a7', wait: '#E39B2D', ride: '#00274C', fail: '#c0392b' };
   const SPEED = 110; // ms per simulated minute
 
@@ -126,7 +127,7 @@
 
       <g transform="translate(40 185)"><path class="house" d="M0 20 L20 2 L40 20 V44 H0 Z" /><text x="20" y="62" class="lbl">Home</text></g>
       <g transform="translate(830 170)"><path class="school" d="M0 44 V14 L22 0 L44 14 V44 Z M14 44 V28 H30 V44" /><text x="22" y="62" class="lbl">Class</text></g>
-      {#each [[A, 'Stop A'], [[470, 110], 'Stop B'], [B, 'Stop C'], [[760, 200], 'Stop D']] as [p, l]}
+      {#each STOPS as [p, l]}
         <circle class="stop" cx={p[0]} cy={p[1]} r="7" /><text class="lbl s" x={p[0]} y={p[1] - 14}>{l}</text>
       {/each}
 
