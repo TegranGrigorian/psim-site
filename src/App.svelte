@@ -77,7 +77,7 @@
         <p class="lede" use:reveal data-reveal>
           Neighborhoods are shaded by how the simulated residents living there fare. Line weight on a route follows its weekday trips.
         </p>
-        <SiteMap {bundle} {city} {hasRedesign} />
+        <SiteMap {bundle} {base} {city} {hasRedesign} />
       </div>
     </section>
 

@@ -8,7 +8,7 @@
   import { busesAt, chevron, DASH_FRAMES, tracks, type Track } from '../lib/routeAnim';
   import type { Bundle, CityIndex, MetricKey } from '../lib/types';
 
-  let { bundle, city, hasRedesign }: { bundle: Bundle; city: CityIndex; hasRedesign: boolean } = $props();
+  let { bundle, base, city, hasRedesign }: { bundle: Bundle; base: Bundle; city: CityIndex; hasRedesign: boolean } = $props();
 
   // The inlined worker breaks under the production bundler; serve it as its own asset.
   maplibregl.setWorkerUrl(workerUrl);
@@ -28,7 +28,8 @@
   let tip = $state<{ x: number; y: number; name: string; trips?: number; isNew: boolean } | null>(null);
   let ts: Track[] = [];
 
-  const vals = $derived(bundle.hoods.features.map((f) => f.properties.metrics[app.metric].mean));
+  // one colour scale for baseline and redesign, so switching scenarios shows real change
+  const vals = $derived([bundle, base].flatMap((b) => b.hoods.features.map((f) => f.properties.metrics[app.metric].mean)));
   const lo = $derived(Math.min(...vals));
   const hi = $derived(Math.max(...vals));
   const meta = $derived(metricMeta(app.metric));
