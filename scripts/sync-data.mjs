@@ -35,4 +35,12 @@ for (const city of readdirSync(src, { withFileTypes: true })) {
   };
   if (inputs.housing.length) writeFileSync(join(dst, city.name, 'inputs.json'), JSON.stringify(inputs));
 }
+// Project docs rendered on docs.html. Optional: a psim-site clone on its own just links to GitHub.
+const ref = join(here, '..', 'public', 'ref');
+rmSync(ref, { recursive: true, force: true });
+mkdirSync(ref, { recursive: true });
+for (const f of ['PLAN.md', 'SCHEMA.md']) {
+  const from = join(here, '..', '..', 'docs', f);
+  if (existsSync(from)) cpSync(from, join(ref, f));
+}
 console.log('synced summaries ->', dst);
