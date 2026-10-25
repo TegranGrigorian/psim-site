@@ -4,7 +4,7 @@
 
   const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   // Illustrative service span per day (hours). Real spans come from the GTFS timetable.
-  const SERVICE: [number, number][] = [[6, 23], [6, 23], [6, 23], [6, 23], [6, 23], [7, 22], [8, 19]];
+  const SERVICE: [number, number][] = [[6, 22], [6, 22], [6, 22], [6, 22], [6, 22], [7, 21], [8, 19]];
 
   type Trip = { day: number; t: number; purpose: 'class' | 'work' | 'home' | 'errand' };
   const P: Record<string, { label: string; who: string; group: string; trips: Trip[] }> = {
