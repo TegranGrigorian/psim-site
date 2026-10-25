@@ -100,6 +100,7 @@
     .pipe { grid-template-columns: 1fr; }
     .stage { display: grid; grid-template-columns: 44px 1fr auto; column-gap: 12px; align-items: center; }
     .ic { grid-row: span 2; margin: 0; }
+    .stage b, .stage small { grid-column: 2; }
     .st { grid-row: span 2; grid-column: 3; margin: 0; }
     .flow { height: 30px; width: 4px; margin: 2px 0 2px 34px; background: repeating-linear-gradient(180deg, #cfc9b8 0 6px, transparent 6px 11px); }
     .flow i { left: -3px; animation-name: down; }
