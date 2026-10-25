@@ -20,6 +20,7 @@ npm run fake-data
 
 - TheRide: https://www.theride.org/sites/default/files/google/google_transit.zip
 - U-M: https://webapps.fo.umich.edu/transit_uploads/google_transit.zip
+- Madison Metro (comparison city, `node scripts/gtfs-routes.mjs madison metro=<dir>`): http://transitdata.cityofmadison.com/GTFS/mmt_gtfs.zip
 
 The basemap is OpenFreeMap (OpenStreetMap data), no API key needed.
 
