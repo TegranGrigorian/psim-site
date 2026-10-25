@@ -3,7 +3,7 @@
 // re-created here as draws with that mean and spread: sd ≈ (ci_high − ci_low) / 3.92.
 // Swap in the real per-replicate values once psim-tools analyze writes them.
 import { normalish, rng } from '../lib/rng';
-import { pairedT } from '../lib/stats';
+import { oneSampleT, pairedT } from '../lib/stats';
 import { GROUP_LABEL } from '../lib/format';
 import type { Bundle, Comparison, Dimension, Interval, MetricKey } from '../lib/types';
 
@@ -14,6 +14,14 @@ export function metric(b: Bundle, dim: Dimension, value: string, m: MetricKey): 
   if (!g) throw new Error(`no ${dim}=${value}`);
   return g.metrics[m];
 }
+
+/** Proposed on-time metric for a group (see make-fake-data.mjs). */
+export function onTime(b: Bundle, group: string): Interval {
+  const iv = b.groupMetrics.groups.find((x) => x.dimension === 'group' && x.value === group)?.metrics.on_time_rate;
+  if (!iv) throw new Error(`no on_time_rate for ${group}`);
+  return iv;
+}
+export const RELIABLE = 95; // % of class trips on time that we call "reliable", fixed in advance
 
 /** 100 per-run values consistent with a summary interval. Percent for failure rates. */
 export function runs(iv: Interval, seed: number, pct = false): number[] {
@@ -108,5 +116,15 @@ export function verdicts(aa: Bundle, mad: Bundle | undefined, comp: Comparison |
     out.push({ id: 'H6', claim: 'A targeted redesign helps the worst-served groups without hurting others.', status: helped && !hurt.length ? 'Supported' : helped ? 'Mixed' : 'Not supported',
       evidence: `${worst.map((v) => `${GROUP_LABEL[v]}: ${(d(v).delta * 100).toFixed(1)} pts`).join('; ')}. ${hurt.length ? `Worse for ${hurt.map((v) => GROUP_LABEL[v].toLowerCase()).join(', ')}.` : 'No group gets meaningfully worse.'}` });
   }
+  // H7
+  try {
+    const ok = ['undergraduate', 'graduate'].map((v, i) => {
+      const t = oneSampleT(runs(onTime(aa, v), 71 + i).map((x) => x * 100), RELIABLE);
+      return { v, m: t.m, ok: t.m > RELIABLE && t.pAbove < 0.05 };
+    });
+    const n = ok.filter((x) => x.ok).length;
+    out.push({ id: 'H7', claim: 'Students can rely on the buses to get them to class on time.', status: n === 2 ? 'Supported' : n === 1 ? 'Mixed' : 'Not supported',
+      evidence: `On time (≥5 min early): ${ok.map((x) => `${GROUP_LABEL[x.v].toLowerCase()} ${x.m.toFixed(1)}%`).join(', ')}, against a ${RELIABLE}% bar set in advance.` });
+  } catch { /* summaries without on_time_rate */ }
   return out;
 }
