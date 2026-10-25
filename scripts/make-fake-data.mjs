@@ -8,19 +8,17 @@ import { fileURLToPath } from 'node:url';
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..', 'data');
 
-// Real route shapes from OpenStreetMap (scripts/fetch-osm-routes.mjs), if cached. Service levels stay invented.
-const NEW_IN_REDESIGN = new Set(['66', '32']);
-function osmRoutes(slug) {
-  const f = join(HERE, 'osm', `${slug}_routes.geojson`);
+// Real route shapes and weekday trip counts from the GTFS feeds (scripts/gtfs-routes.mjs), if present.
+// The fake redesign adds late-night "Night Owl" service on two existing corridors.
+const NIGHT_OWLS = { '22': 'N22 Night Owl: Northside–Northeast (new)', '4': 'N4 Night Owl: Washtenaw–East Side (new)' };
+function gtfsRoutes(slug) {
+  const f = join(HERE, 'shapes', `${slug}_routes.geojson`);
   if (!existsSync(f)) return null;
-  const r = rng(7);
   const routes = [], newRoutes = [];
   for (const ft of JSON.parse(readFileSync(f, 'utf8')).features) {
-    const { ref, name, agency } = ft.properties;
-    const id = `${agency === 'umich' ? 'UM' : 'AA'}-${ref}`;
-    const trips = Math.round((agency === 'umich' ? 110 : 40) + r() * 50);
-    if (NEW_IN_REDESIGN.has(ref)) newRoutes.push([id, agency, `${name} (new)`, ft.geometry.coordinates, Math.round(trips * 0.8)]);
-    else routes.push([id, agency, name, ft.geometry.coordinates, trips]);
+    const { ref, name, agency, trips_per_weekday } = ft.properties;
+    routes.push([`${agency === 'umich' ? 'UM' : 'AA'}-${ref}`, agency, name, ft.geometry.coordinates, trips_per_weekday]);
+    if (agency === 'theride' && NIGHT_OWLS[ref]) newRoutes.push([`AA-N${ref}`, agency, NIGHT_OWLS[ref], ft.geometry.coordinates, 12]);
   }
   return { routes, newRoutes };
 }
@@ -302,7 +300,7 @@ function write(path, obj) {
 }
 
 for (const [slug, city] of Object.entries(CITIES)) {
-  const o = osmRoutes(slug);
+  const o = gtfsRoutes(slug);
   if (o) Object.assign(city, o);
 }
 
