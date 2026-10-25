@@ -12,17 +12,24 @@
   import Threads from './Threads.svelte';
   import Aggregate from './Aggregate.svelte';
   import Glossary from './Glossary.svelte';
+  import WhySim from './WhySim.svelte';
+  import HypothesisTest from './HypothesisTest.svelte';
+  import Verdicts from './Verdicts.svelte';
+  import { tests, verdicts } from './evidence';
   import { reveal } from '../lib/actions';
-  import { loadBundle } from '../lib/data';
-  import type { Bundle } from '../lib/types';
+  import { loadBundle, loadComparison } from '../lib/data';
+  import type { Bundle, Comparison } from '../lib/types';
   import type { Inputs } from './inputs';
 
   let bundle = $state<Bundle>();
+  let madison = $state<Bundle>();
+  let comparison = $state<Comparison | null>(null);
   let inputs = $state<Inputs>();
   let progress = $state(0);
   let active = $state('overview');
 
   const STEPS = [
+    ['why', 'Why simulate?'],
     ['overview', 'The big picture'],
     ['people', '1 · Make the people'],
     ['places', '2 · Homes and destinations'],
@@ -32,12 +39,16 @@
     ['repeat', '6 · Do it 100 times'],
     ['threads', '7 · Many workers at once'],
     ['sumup', '8 · Sum it up'],
+    ['test', '9 · Test a claim'],
+    ['verdict', '10 · What we’d know'],
     ['words', 'Words to know'],
   ];
 
   onMount(() => {
     const base = `${import.meta.env.BASE_URL}data/ann_arbor`;
     loadBundle('ann_arbor', 'baseline').then((b) => (bundle = b));
+    loadBundle('madison', 'baseline').then((b) => (madison = b)).catch(() => {});
+    loadComparison('ann_arbor', 'redesign_v1').then((c) => (comparison = c));
     fetch(`${base}/inputs.json`).then((r) => r.json()).then((j) => (inputs = j)).catch(() => {});
 
     const onScroll = () => {
@@ -66,7 +77,7 @@
       of them out on the real bus schedule, and watches who gets where, how long it takes, and who gets stuck. This page walks
       through that, one step at a time, without any code.
     </p>
-    <a class="start" href="#overview">Start <span aria-hidden="true">↓</span></a>
+    <a class="start" href="#why">Start <span aria-hidden="true">↓</span></a>
   </div>
 </header>
 
@@ -77,7 +88,21 @@
 </nav>
 
 <main>
-  <section id="overview" class="step">
+  <section id="why" class="step">
+    <div class="wrap">
+      <div class="head" use:reveal data-reveal>
+        <p class="num">Start here</p>
+        <h2>Why simulate, and what are we testing?</h2>
+        <p class="lede">
+          A simulation is a controlled experiment we can’t run on the real city. Before running it, we write down what we expect,
+          in a form the results could prove wrong.
+        </p>
+      </div>
+      <WhySim />
+    </div>
+  </section>
+
+  <section id="overview" class="step alt">
     <div class="wrap">
       <div class="head" use:reveal data-reveal>
         <p class="num">The big picture</p>
@@ -91,7 +116,7 @@
     </div>
   </section>
 
-  <section id="people" class="step alt">
+  <section id="people" class="step">
     <div class="wrap two">
       <div class="text" use:reveal data-reveal>
         <p class="num">Step 1</p>
@@ -114,7 +139,7 @@
     </div>
   </section>
 
-  <section id="places" class="step">
+  <section id="places" class="step alt">
     <div class="wrap two">
       <div class="text" use:reveal data-reveal>
         <p class="num">Step 2</p>
@@ -126,11 +151,11 @@
         </p>
         <p>Undergraduates mostly land in dorms near campus. Shift workers end up at hospitals, malls and warehouses. The lines show each person’s main trip.</p>
       </div>
-      {#if inputs && bundle}<Places {inputs} {bundle} />{/if}
+      {#if inputs}<Places {inputs} />{/if}
     </div>
   </section>
 
-  <section id="week" class="step alt">
+  <section id="week" class="step">
     <div class="wrap two">
       <div class="text" use:reveal data-reveal>
         <p class="num">Step 3</p>
@@ -148,7 +173,7 @@
     </div>
   </section>
 
-  <section id="ride" class="step">
+  <section id="ride" class="step alt">
     <div class="wrap">
       <div class="head" use:reveal data-reveal>
         <p class="num">Step 4</p>
@@ -164,7 +189,7 @@
     </div>
   </section>
 
-  <section id="window" class="step alt">
+  <section id="window" class="step">
     <div class="wrap two">
       <div class="text" use:reveal data-reveal>
         <p class="num">Step 5</p>
@@ -179,7 +204,7 @@
     </div>
   </section>
 
-  <section id="repeat" class="step">
+  <section id="repeat" class="step alt">
     <div class="wrap two">
       <div class="text" use:reveal data-reveal>
         <p class="num">Step 6</p>
@@ -192,6 +217,11 @@
           Each run gives an answer, for example “shift workers failed 26% of trips.” Stacked up, the answers form a pile. The
           shaded band holds the middle 95 of the 100 runs. That is the <b>95% interval</b> shown as whiskers on the results page:
           a narrow band means the answer is steady, and a wide band means it’s less certain.
+        </p>
+        <p>
+          Piles like this almost always take the shape of a <b>bell curve</b> (a normal distribution). Two numbers describe it: the
+          average, <b>μ</b> (mu), and the spread, <b>σ</b> (sigma, the standard deviation). About 68 of 100 runs land within one σ of
+          the average, and about 95 within two.
         </p>
       </div>
       <Replicates />
@@ -230,6 +260,50 @@
         <a class="cta" href="./index.html#gap">See the results →</a>
       </div>
       {#if bundle}<Aggregate {bundle} />{/if}
+    </div>
+  </section>
+
+  <section id="test" class="step alt">
+    <div class="wrap">
+      <div class="head" use:reveal data-reveal>
+        <p class="num">Step 9 · the payoff</p>
+        <h2>Testing a claim: good result or bad?</h2>
+        <p class="lede">
+          For riders, a <b>good result</b> is no gap: everyone is equally likely to get where they need to go. A <b>bad result</b> is
+          a large, reliable gap. The test below asks how far our simulated gap is from “fair,” measured in standard errors, and how
+          likely a gap that size would be if the network really were fair. Click through the five steps, or pick another comparison.
+        </p>
+      </div>
+      {#if bundle}<HypothesisTest tests={tests(bundle)} />{/if}
+    </div>
+  </section>
+
+  <section id="verdict" class="step">
+    <div class="wrap">
+      <div class="head" use:reveal data-reveal>
+        <p class="num">Step 10</p>
+        <h2>What we’d know</h2>
+        <p class="lede">
+          Each hypothesis from the top of the page, with the evidence and the test behind its verdict. These verdicts are worked out
+          automatically from the summary files, so they will update themselves once the real simulation replaces the placeholder data.
+        </p>
+      </div>
+      {#if bundle}
+        {@const vs = verdicts(bundle, madison, comparison)}
+        <Verdicts verdicts={vs} />
+        <div class="meaning" use:reveal data-reveal>
+          <p class="num">So what?</p>
+          <ul>
+            {#each vs as v}
+              <li><b>{v.id}</b> {v.status === 'Supported' ? 'held up' : v.status === 'Mixed' ? 'partly held up' : 'did not hold up'}: {v.claim.charAt(0).toLowerCase() + v.claim.slice(1)}</li>
+            {/each}
+          </ul>
+          <div class="todo">
+            <b>Interpretation</b>
+            <p>Placeholder. The author’s own reading of what these results mean for the student and resident imaginaries of Ann Arbor goes here once the real simulation has run.</p>
+          </div>
+        </div>
+      {/if}
     </div>
   </section>
 
@@ -282,5 +356,10 @@
   .text p:not(.num) { color: #36424f; font-size: 16.5px; }
   .aside { background: var(--maize-soft); border-left: 3px solid var(--maize); padding: 14px 16px; border-radius: 0 10px 10px 0; font-size: 15px; color: #3b3200; }
   .cta { display: inline-block; margin-top: 8px; font-weight: 600; color: var(--blue); text-decoration: none; border-bottom: 2px solid var(--maize); padding-bottom: 2px; }
+  .meaning { margin-top: 28px; background: #fff; border: 1px solid var(--rule); border-radius: var(--radius); padding: clamp(18px, 3vw, 28px); }
+  .meaning ul { margin: 0 0 18px; padding-left: 1.1em; display: grid; gap: 6px; color: #36424f; }
+  .meaning li b { color: var(--blue); margin-right: 4px; }
+  .todo { border: 2px dashed var(--rule); border-radius: 12px; padding: 14px 16px; }
+  .todo p { margin: 4px 0 0; color: var(--muted); font-size: 15px; }
   @media (max-width: 900px) { .two { grid-template-columns: 1fr; } .text { position: static; } }
 </style>
