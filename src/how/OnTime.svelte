@@ -119,7 +119,8 @@
 
   <h4>3 · The test</h4>
   <div class="eq">
-    <Tex block tex={`H_0:\\ \\mu \\le ${target}\\% \\quad\\text{vs}\\quad H_1:\\ \\mu > ${target}\\% \\qquad t = \\frac{\\bar x - ${target}}{s/\\sqrt{n}} = \\frac{${test.m.toFixed(2)} - ${target}}{${test.s.toFixed(2)}/\\sqrt{${test.n}}} = ${test.t.toFixed(1)}`} />
+    <Tex block tex={`H_0:\\ \\mu \\le ${target}\\% \\quad\\text{vs}\\quad H_1:\\ \\mu > ${target}\\%`} />
+    <Tex block tex={`t = \\frac{\\bar x - ${target}}{s/\\sqrt{n}} = \\frac{${test.m.toFixed(2)} - ${target}}{${test.s.toFixed(2)}/\\sqrt{${test.n}}} = ${test.t.toFixed(1)}`} />
     <Tex block tex={verdict === 'unreliable' ? `p_{\\text{below}} = ${texP(test.pBelow)}` : `p = ${texP(test.pAbove)}`} />
   </div>
   <div class="verdict {verdict}">
