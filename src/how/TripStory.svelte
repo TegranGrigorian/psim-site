@@ -127,7 +127,7 @@
       <text class="rl" x="640" y="150">Bus 23</text>
 
       <g transform="translate(40 185)"><path class="house" d="M0 20 L20 2 L40 20 V44 H0 Z" /><text x="20" y="62" class="lbl">Home</text></g>
-      <g transform="translate(830 170)"><path class="school" d="M0 44 V14 L22 0 L44 14 V44 Z M14 44 V28 H30 V44" /><text x="22" y="62" class="lbl">Class</text></g>
+      <g transform="translate(830 170)"><path class="school" d="M0 44 V14 L22 0 L44 14 V44 Z M14 44 V28 H30 V44" /><text x="22" y="62" class="lbl">{mode === 'night' ? 'Work' : 'Class'}</text></g>
       {#each STOPS as [p, l, dy]}
         <circle class="stop" cx={p[0]} cy={p[1]} r="7" /><text class="lbl s" x={p[0]} y={p[1] + dy}>{l}</text>
       {/each}
