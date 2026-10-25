@@ -20,8 +20,27 @@ export function tracks(routes: Routes): Track[] {
   });
 }
 
+type Line = Pick<Track, 'coords' | 'cum' | 'len'>;
+
+/** Prepare any coordinate list for walking along it. */
+export function prep(coords: number[][]): Line {
+  const k = Math.cos(((coords[0]?.[1] ?? 42) * Math.PI) / 180);
+  const cum = [0];
+  for (let j = 1; j < coords.length; j++) cum.push(cum[j - 1] + Math.hypot((coords[j][0] - coords[j - 1][0]) * k, coords[j][1] - coords[j - 1][1]));
+  return { coords, cum, len: cum[cum.length - 1] };
+}
+
+/** The part of a line from its start to fraction `f`, ending exactly at the moving point. */
+export function sliceTo(t: Line, f: number): number[][] {
+  const d = f * t.len;
+  const out = [t.coords[0]];
+  for (let i = 1; i < t.coords.length && t.cum[i] < d; i++) out.push(t.coords[i]);
+  out.push(pointAt(t, f));
+  return out;
+}
+
 /** Point at fraction `f` (0..1) along a track. */
-export function pointAt(t: Track, f: number): number[] {
+export function pointAt(t: Line, f: number): number[] {
   const d = f * t.len;
   let lo = 0, hi = t.cum.length - 1;
   while (lo < hi - 1) { const mid = (lo + hi) >> 1; if (t.cum[mid] <= d) lo = mid; else hi = mid; }
