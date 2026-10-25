@@ -200,6 +200,17 @@ function build(slug, city, scen) {
   const push = (dimension, value, n, vals) => groups.push({ dimension, value, n_personas_mean: round(n, 1), metrics: metricBlock(vals, n) });
 
   GROUPS.forEach((g) => push('group', g, N * weights[g], groupVals(city, g, scen)));
+  // Proposed extra metric: share of required trips (class/work) arriving ≥5 min before start, on the
+  // scheduled timetable. Retired residents have no required trips, so theirs is null.
+  const ON_TIME = { undergraduate: 0.968, graduate: 0.931, university_staff: 0.955, resident_worker: 0.912, shift_worker: 0.842, retired: null };
+  const onTimeBoost = scen === 'redesign_v1' ? { shift_worker: 0.055, resident_worker: 0.015, retired: 0 } : {};
+  groups.filter((x) => x.dimension === 'group').forEach((x) => {
+    const base = ON_TIME[x.value];
+    if (base == null) { x.metrics.on_time_rate = null; return; }
+    const m = Math.min(0.995, 1 - (1 - base) * city.gap ** 0.5 + (onTimeBoost[x.value] ?? 0)) * jitter(0.002);
+    const hw = 0.004 + (1 - m) * 0.06 * jitter(0.2);
+    x.metrics.on_time_rate = { mean: round(m, 4), ci_low: round(m - hw, 4), ci_high: round(Math.min(1, m + hw), 4) };
+  });
 
   const sub = (dim, entries) => { const total = entries.reduce((a, [, w]) => a + Object.values(w).reduce((x, y) => x + y, 0), 0); entries.forEach(([value, mixw, f]) => {
     const w = Object.fromEntries(GROUPS.map((g) => [g, (mixw[g] ?? 0.0001)]));
@@ -250,7 +261,7 @@ function build(slug, city, scen) {
     push('neighborhood', n, N * hoodShare[i] / hoodShare.reduce((a, b) => a + b, 0), v);
   });
 
-  const groupMetrics = { schema_version: '0.1', fake: true, city_slug: slug, scenario: scen, n_replicates: 100, groups };
+  const groupMetrics = { schema_version: '0.1', fake: true, city_slug: slug, scenario: scen, n_replicates: 100, on_time_definition: 'required trip arrives >= 5 min before start (scheduled service)', groups };
 
   // time of day
   const tod = { schema_version: '0.1', fake: true, city_slug: slug, scenario: scen, day_types: dayType, series: [] };
