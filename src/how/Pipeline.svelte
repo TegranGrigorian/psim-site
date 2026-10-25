@@ -66,7 +66,7 @@
 {/key}
 
 <style>
-  .pipe { display: grid; grid-template-columns: repeat(4, 1fr 44px) 1fr; align-items: stretch; }
+  .pipe { display: grid; grid-template-columns: repeat(4, 1fr 56px) 1fr; align-items: stretch; }
   .stage { background: #fff; border: 1.5px solid var(--rule); border-radius: var(--radius); padding: 18px 14px; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; text-align: left; transition: border-color 0.25s, transform 0.3s var(--ease), box-shadow 0.3s; }
   :global([data-reveal]) .stage { opacity: 0; transform: translateY(14px); }
   :global([data-reveal].in) .stage { opacity: 1; transform: none; transition: opacity 0.6s var(--ease) calc(var(--i) * 120ms), transform 0.6s var(--ease) calc(var(--i) * 120ms), border-color 0.25s, box-shadow 0.3s; }
