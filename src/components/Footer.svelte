@@ -47,7 +47,7 @@
     </div>
   </div>
   <div class="wrap fine">
-    <p>Who Is the Bus For? · HISTART 394 · University of Michigan</p>
+    <p>Who Is the Bus For? · HISTART 394 · University of Michigan · <a href="./how.html">How it works</a> · <a href="./docs.html">Docs</a></p>
     <p>The simulation code and analysis are the author’s own work. This website was built with an agentic AI assistant, as disclosed in the project’s AI policy.</p>
   </div>
 </footer>
@@ -74,5 +74,6 @@
   .repos a:hover i { transform: translate(3px, -3px); }
   .fine { margin-top: 56px; padding-top: 22px; border-top: 1px solid rgba(255, 255, 255, 0.12); font-size: 13px; color: #94a8c0; }
   .fine p { margin: 0 0 6px; }
+  .fine a { color: #cfdbe9; }
   @media (max-width: 800px) { .grid { grid-template-columns: 1fr; } }
 </style>

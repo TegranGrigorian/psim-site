@@ -2,7 +2,7 @@
   import { app } from '../lib/state.svelte';
   import type { CityIndex } from '../lib/types';
 
-  let { cities = [], page = 'home' }: { cities?: CityIndex[]; page?: 'home' | 'how' } = $props();
+  let { cities = [], page = 'home' }: { cities?: CityIndex[]; page?: 'home' | 'how' | 'docs' } = $props();
   let open = $state(false);
   let scrolled = $state(false);
   const home = $derived(page === 'home' ? '' : './index.html');
@@ -26,6 +26,7 @@
         <li><a {href} onclick={() => (open = false)}>{text}</a></li>
       {/each}
       <li><a class="how" class:here={page === 'how'} href="./how.html" onclick={() => (open = false)}>How it works</a></li>
+      <li><a class:here={page === 'docs'} href="./docs.html" onclick={() => (open = false)}>Docs</a></li>
     </ul>
     {#if cities.length}
     <select aria-label="City" value={app.city} onchange={(e) => pick(e.currentTarget.value)}>
