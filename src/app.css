@@ -52,7 +52,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 [data-reveal].in { opacity: 1; transform: none; }
 
 /* segmented controls */
-.seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: #ece8dc; border-radius: 999px; }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 4px; padding: 4px; background: #ece8dc; border-radius: 22px; }
 .seg button { border: 0; background: transparent; padding: 7px 14px; border-radius: 999px; font-size: 14px; font-weight: 500; color: #3b4755; transition: background 0.25s, color 0.25s, box-shadow 0.25s; }
 .seg button:hover { color: var(--blue); }
 .seg button[aria-pressed='true'] { background: var(--blue); color: #fff; box-shadow: 0 1px 3px rgba(0, 39, 76, 0.3); }
