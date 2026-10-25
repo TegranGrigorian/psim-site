@@ -115,7 +115,9 @@
 <style>
   .hero { position: relative; background: var(--blue); color: #fff; overflow: hidden; padding: clamp(72px, 12vw, 150px) 0 clamp(48px, 7vw, 80px); }
   .lines { position: absolute; top: 0; bottom: 0; right: 0; width: 100%; height: 100%; opacity: 0.9; }
-  @media (min-width: 900px) { .lines { left: 38%; width: 62%; } }
+  @media (min-width: 900px) {
+    .lines { left: 30%; width: 70%; -webkit-mask-image: linear-gradient(90deg, transparent 18%, #000 55%); mask-image: linear-gradient(90deg, transparent 18%, #000 55%); }
+  }
   @media (max-width: 899px) { .lines { opacity: 0.35; } }
   .l { stroke-width: 5; stroke-dasharray: 1; stroke-dashoffset: 1; animation: draw 2.6s var(--ease) forwards; }
   .l1 { stroke: var(--maize); }
