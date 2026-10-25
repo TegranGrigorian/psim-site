@@ -302,7 +302,7 @@ jobs:
         {#snippet windows()}<Code title="current commands" lang="powershell" code={C.toolsNowWin} />{/snippet}
       </OsTabs>
       <Code title="placeholder" code={C.toolsPlanned} />
-      <p>Every run is a function of its inputs and a seed. The project’s base seed is 42, and replicate <i>i</i> uses seed 42 + <i>i</i>, so the same command always gives byte-identical output.</p>
+      <p>Every run is a function of its inputs and a seed. Replicate <i>i</i> uses <code>base_seed + i</code>; the base seed comes from <code>--base-seed</code>, then <code>config.json</code> (see SCHEMA.md), and is always recorded in <code>manifest.json</code>. The same seed gives byte-identical output.</p>
     </section>
 
     <section id="engine">
