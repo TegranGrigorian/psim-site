@@ -77,7 +77,7 @@
   .ag { padding: clamp(16px, 3vw, 26px); }
   .top { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 12px; }
   .cap { margin: 0; font-weight: 600; }
-  button { border: 1px solid var(--rule); background: #fff; border-radius: 999px; padding: 7px 14px; font-size: 14px; }
+  button { border: 1px solid var(--rule); background: #fff; border-radius: 999px; padding: 7px 14px; font-size: 14px; white-space: nowrap; }
   .stage { position: relative; height: 340px; background: #f6f3ea; border-radius: 12px; overflow: hidden; }
   .chip { position: absolute; width: 13%; height: 6.4%; display: grid; place-items: center; font-size: clamp(9px, 1.4vw, 11.5px); font-weight: 600; border-radius: 5px; background: #fff; color: var(--ink); border-left: 4px solid var(--c); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08); transition: left 1s var(--ease), top 1s var(--ease), width 1s var(--ease), opacity 0.6s, transform 0.6s var(--ease); white-space: nowrap; overflow: hidden; }
   .chip.fail { background: #fbe7e3; color: #8e2a1c; }
