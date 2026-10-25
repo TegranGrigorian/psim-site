@@ -68,3 +68,24 @@ export function texP(p: number): string {
   const e = Math.floor(Math.log10(p));
   return `${(p / 10 ** e).toFixed(1)} \\times 10^{${e}}`;
 }
+
+/** Standard normal CDF (Abramowitz–Stegun 7.1.26, error < 1.5e-7). */
+export function normCdf(z: number): number {
+  const t = 1 / (1 + 0.3275911 * Math.abs(z) / Math.SQRT2);
+  const y = 1 - (((((1.061405429 * t - 1.453152027) * t + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t) * Math.exp(-(z * z) / 2);
+  return z >= 0 ? (1 + y) / 2 : (1 - y) / 2;
+}
+
+/** Inverse standard normal CDF by bisection (plenty fast for a handful of calls). */
+export function normInv(p: number): number {
+  let lo = -8, hi = 8;
+  for (let i = 0; i < 60; i++) { const mid = (lo + hi) / 2; if (normCdf(mid) < p) lo = mid; else hi = mid; }
+  return (lo + hi) / 2;
+}
+
+/** One-sample t-test of H0: mean ≤ target against H1: mean > target. */
+export function oneSampleT(v: number[], target: number) {
+  const n = v.length, m = mean(v), s = sd(v), se = s / Math.sqrt(n), t = (m - target) / se;
+  const two = tTwoSided(t, n - 1);
+  return { n, m, s, se, t, df: n - 1, pAbove: t > 0 ? two / 2 : 1 - two / 2, pBelow: t < 0 ? two / 2 : 1 - two / 2 };
+}
