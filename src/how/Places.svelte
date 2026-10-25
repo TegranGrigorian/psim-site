@@ -79,6 +79,11 @@
     {#each bundle.hoods.features as f}
       <path class="hood" d={poly(f.geometry.coordinates[0])} />
     {/each}
+    {#each bundle.hoods.features as f}
+      {@const ring = f.geometry.coordinates[0]}
+      {@const c = px(ring.reduce((a, p) => a + p[0], 0) / ring.length, ring.reduce((a, p) => a + p[1], 0) / ring.length)}
+      <text class="hl" x={c[0]} y={c[1]}>{f.properties.name}</text>
+    {/each}
     {#each inputs.housing as h}
       {@const [x, y] = px(h.lon, h.lat)}
       <circle class="home" cx={x} cy={y} r={3 + Math.sqrt(h.units) / 5} />
@@ -117,6 +122,7 @@
   .pl { padding: clamp(14px, 2.5vw, 22px); }
   svg { width: 100%; display: block; background: #f6f3ea; border-radius: 10px; }
   .hood { fill: #ece7d8; stroke: #fff; stroke-width: 2; }
+  .hl { font-size: 11px; fill: #a39c86; text-anchor: middle; font-weight: 600; letter-spacing: 0.02em; }
   .home { fill: #fff; stroke: var(--blue); stroke-width: 1.5; }
   .work { fill: var(--blue); }
   .campus { fill: var(--maize); stroke: var(--blue); stroke-width: 1.5; }
