@@ -2,10 +2,13 @@
   import { app } from '../lib/state.svelte';
   import type { CityIndex } from '../lib/types';
 
-  let { cities }: { cities: CityIndex[] } = $props();
+  let { cities = [], page = 'home' }: { cities?: CityIndex[]; page?: 'home' | 'how' } = $props();
   let open = $state(false);
   let scrolled = $state(false);
-  const links = [['gap', 'The gap'], ['where', 'Where'], ['when', 'When'], ['redesign', 'Redesign'], ['elsewhere', 'Elsewhere'], ['method', 'Method']];
+  const home = page === 'home' ? '' : './index.html';
+  const links = [
+    [`${home}#gap`, 'The gap'], [`${home}#where`, 'Where'], [`${home}#when`, 'When'], [`${home}#redesign`, 'Redesign'], [`${home}#elsewhere`, 'Elsewhere'],
+  ];
 
   function pick(slug: string) {
     app.city = slug;
@@ -17,15 +20,18 @@
 
 <nav class:scrolled>
   <div class="wrap bar">
-    <a class="brand" href="#top" aria-label="Who is the bus for? home"><i></i>psim</a>
+    <a class="brand" href={page === 'home' ? '#top' : './index.html'} aria-label="Who is the bus for? home"><i></i>psim</a>
     <ul class:open>
-      {#each links as [id, text]}
-        <li><a href="#{id}" onclick={() => (open = false)}>{text}</a></li>
+      {#each links as [href, text]}
+        <li><a {href} onclick={() => (open = false)}>{text}</a></li>
       {/each}
+      <li><a class="how" class:here={page === 'how'} href="./how.html" onclick={() => (open = false)}>How it works</a></li>
     </ul>
+    {#if cities.length}
     <select aria-label="City" value={app.city} onchange={(e) => pick(e.currentTarget.value)}>
       {#each cities as c}<option value={c.slug}>{c.display_name}</option>{/each}
     </select>
+    {/if}
     <button class="burger" aria-label="Menu" aria-expanded={open} onclick={() => (open = !open)}><span></span><span></span></button>
   </div>
 </nav>
@@ -39,6 +45,8 @@
   ul { display: flex; gap: 4px; list-style: none; margin: 0; padding: 0; }
   ul a { display: block; text-decoration: none; padding: 8px 12px; border-radius: 999px; font-size: 14px; font-weight: 500; color: #cfdbe9; transition: color 0.2s, background 0.2s; }
   ul a:hover { color: #fff; background: rgba(255, 255, 255, 0.1); }
+  ul a.how { color: var(--maize); }
+  ul a.here { background: rgba(255, 203, 5, 0.14); }
   select { background: rgba(255, 255, 255, 0.1); color: #fff; border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 999px; padding: 7px 12px; font: inherit; font-size: 14px; }
   select option { color: #000; }
   .burger { display: none; background: none; border: 0; width: 40px; height: 40px; position: relative; }
