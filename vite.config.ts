@@ -8,6 +8,6 @@ export default defineConfig({
   plugins: [svelte()],
   build: {
     chunkSizeWarningLimit: 1200,
-    rollupOptions: { input: { main: resolve(__dirname, 'index.html'), how: resolve(__dirname, 'how.html') } },
+    rollupOptions: { input: { main: resolve(__dirname, 'index.html'), how: resolve(__dirname, 'how.html'), docs: resolve(__dirname, 'docs.html') } },
   },
 });
