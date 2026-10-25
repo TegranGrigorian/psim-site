@@ -147,6 +147,7 @@
             <li>Transit only. “Failure” means no transit option, not no way to travel.</li>
             <li>Synthetic people show what the system’s design does to a plausible population, not what residents actually experience.</li>
           </ul>
+          <a class="walk" href="./how.html">See the full walkthrough, step by step <span aria-hidden="true">→</span></a>
         </div>
       </div>
     </section>
@@ -165,5 +166,9 @@
   .method ol { padding-left: 1.2em; margin: 0 0 32px; display: grid; gap: 14px; }
   .method ul { padding-left: 1.2em; display: grid; gap: 8px; color: #36424f; }
   .method h3 { font-size: 24px; margin-bottom: 14px; }
+  .walk { display: inline-flex; gap: 10px; align-items: center; margin-top: 18px; background: var(--blue); color: #fff; text-decoration: none; font-weight: 600; padding: 12px 20px; border-radius: 999px; transition: transform 0.25s var(--ease), background 0.25s; }
+  .walk:hover { transform: translateY(-2px); background: var(--blue-2); }
+  .walk span { color: var(--maize); transition: transform 0.25s var(--ease); }
+  .walk:hover span { transform: translateX(3px); }
   @media (max-width: 800px) { .method { grid-template-columns: 1fr; } }
 </style>
