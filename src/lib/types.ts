@@ -37,14 +37,14 @@ export interface TimeOfDay { series: TodSeries[] }
 export interface HoodFeature {
   type: 'Feature';
   properties: { neighborhood: string; name: string; n_personas_mean: number; metrics: Metrics };
-  geometry: GeoJSON.Polygon;
+  geometry: { type: "Polygon"; coordinates: number[][][] };
 }
 export interface NeighborhoodMap { type: 'FeatureCollection'; features: HoodFeature[] }
 
 export interface RouteFeature {
   type: 'Feature';
   properties: { route_id: string; route_short_name: string; agency: string; trips_per_weekday?: number; is_new?: boolean };
-  geometry: GeoJSON.LineString;
+  geometry: { type: "LineString"; coordinates: number[][] };
 }
 export interface Routes { type: 'FeatureCollection'; features: RouteFeature[] }
 

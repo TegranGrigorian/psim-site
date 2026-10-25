@@ -1,8 +1,8 @@
 <script lang="ts">
-  import maplibregl from 'maplibre-gl';
+  import * as maplibregl from 'maplibre-gl';
   import { onMount } from 'svelte';
   import { app } from '../lib/state.svelte';
-  import { HEAT, fmt, metricMeta, METRICS, label } from '../lib/format';
+  import { HEAT, fmt, metricMeta, METRICS } from '../lib/format';
   import type { Bundle, CityIndex, MetricKey } from '../lib/types';
 
   let { bundle, city, hasRedesign }: { bundle: Bundle; city: CityIndex; hasRedesign: boolean } = $props();
@@ -68,13 +68,13 @@
 
       let hover: number | null = null;
       const setOn = (id: number | null, on: boolean) => id !== null && m.setFeatureState({ source: 'hoods', id }, { on });
-      m.on('mousemove', 'hood-fill', (e) => {
+      m.on('mousemove', 'hood-fill', (e: any) => {
         m.getCanvas().style.cursor = 'pointer';
         const f = e.features?.[0];
         if (f && f.id !== hover) { setOn(hover, false); hover = f.id as number; setOn(hover, true); }
       });
       m.on('mouseleave', 'hood-fill', () => { setOn(hover, false); hover = null; m.getCanvas().style.cursor = ''; });
-      m.on('click', 'hood-fill', (e) => { selected = e.features?.[0]?.properties?.neighborhood ?? null; });
+      m.on('click', 'hood-fill', (e: any) => { selected = e.features?.[0]?.properties?.neighborhood ?? null; });
       ready = true;
     });
     return () => map?.remove();
