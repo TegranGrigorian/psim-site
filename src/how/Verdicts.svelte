@@ -11,6 +11,7 @@
     H4: 'Compare the best-to-worst neighborhood spread with the student–resident gap.',
     H5: 'Same pipeline on Madison; compare the gap ratios, not raw minutes.',
     H6: 'Before/after on the same towns; the 95% interval of each change must exclude zero.',
+    H7: 'One-sided t-test of each student group’s on-time rate against a 95% bar.',
   };
   const count = (s: string) => verdicts.filter((v) => v.status === s).length;
 </script>
