@@ -4,6 +4,8 @@
   import { onMount } from 'svelte';
   import { app } from '../lib/state.svelte';
   import { HEAT, fmt, metricMeta, METRICS } from '../lib/format';
+  import { reducedMotion } from '../lib/curves';
+  import { busesAt, chevron, DASH_FRAMES, tracks, type Track } from '../lib/routeAnim';
   import type { Bundle, CityIndex, MetricKey } from '../lib/types';
 
   let { bundle, city, hasRedesign }: { bundle: Bundle; city: CityIndex; hasRedesign: boolean } = $props();
@@ -11,12 +13,20 @@
   // The inlined worker breaks under the production bundler; serve it as its own asset.
   maplibregl.setWorkerUrl(workerUrl);
 
+  // Free vector basemap built on OpenStreetMap, no API key needed.
+  const BASEMAP = 'https://tiles.openfreemap.org/styles/positron';
+  const AGENCY: Record<string, string> = { theride: '#00274C', umich: '#E0A800', metro: '#00274C' };
+  const NEW_ROUTE = '#D86018';
+  const lineColor: any = ['case', ['boolean', ['get', 'is_new'], false], NEW_ROUTE, ['match', ['get', 'agency'], 'umich', AGENCY.umich, AGENCY.theride]];
+
   let el: HTMLDivElement;
   let map: maplibregl.Map | undefined;
   let ready = $state(false);
   let markers: maplibregl.Marker[] = [];
   let selected = $state<string | null>(null);
   let showRoutes = $state(true);
+  let tip = $state<{ x: number; y: number; name: string; trips?: number; isNew: boolean } | null>(null);
+  let ts: Track[] = [];
 
   const vals = $derived(bundle.hoods.features.map((f) => f.properties.metrics[app.metric].mean));
   const lo = $derived(Math.min(...vals));
@@ -55,28 +65,53 @@
   onMount(() => {
     map = new maplibregl.Map({
       container: el,
+      style: BASEMAP,
       bounds: city.bbox,
       fitBoundsOptions: { padding: 24 },
-      attributionControl: false,
+      attributionControl: { compact: true },
       cooperativeGestures: true,
-      style: {
-        version: 8,
-        sources: {},
-        layers: [
-          { id: 'bg', type: 'background', paint: { 'background-color': '#eeebe0' } },
-        ],
-      },
     });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
 
+    let raf = 0, visible = false, frame = 0, lastDash = 0;
+    const t0 = performance.now();
+    const loop = (now: number) => {
+      const m = map!;
+      if (now - lastDash > 60) {
+        frame = (frame + 1) % DASH_FRAMES.length;
+        m.setPaintProperty('route-flow', 'line-dasharray', DASH_FRAMES[frame]);
+        lastDash = now;
+      }
+      (m.getSource('buses') as maplibregl.GeoJSONSource | undefined)?.setData(busesAt(ts, (now - t0) / 1000) as any);
+      if (visible) raf = requestAnimationFrame(loop);
+    };
+    const io = new IntersectionObserver(([e]) => {
+      visible = e.isIntersecting && !reducedMotion();
+      cancelAnimationFrame(raf);
+      if (visible && ready) raf = requestAnimationFrame(loop);
+    });
+    io.observe(el);
+
     map.on('load', () => {
       const m = map!;
+      // our layers go under the basemap's labels so street names stay readable
+      const firstLabel = m.getStyle().layers.find((l) => l.type === 'symbol')?.id;
+      m.addImage('chevron', chevron(), { pixelRatio: 2 });
+      ts = tracks(bundle.routes);
+
       m.addSource('hoods', { type: 'geojson', data: dataFor(bundle, app.metric) });
       m.addSource('routes', { type: 'geojson', data: bundle.routes as any });
-      m.addLayer({ id: 'hood-fill', type: 'fill', source: 'hoods', paint: { 'fill-color': fillExpr(lo, hi), 'fill-opacity': ['case', ['boolean', ['feature-state', 'on'], false], 0.92, 0.78], 'fill-color-transition': { duration: 600 } } });
-      m.addLayer({ id: 'hood-line', type: 'line', source: 'hoods', paint: { 'line-color': '#ffffff', 'line-width': ['case', ['boolean', ['feature-state', 'on'], false], 3, 1.2] } });
-      m.addLayer({ id: 'route-case', type: 'line', source: 'routes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#00274C', 'line-width': ['+', 2.5, ['/', ['coalesce', ['get', 'trips_per_weekday'], 30], 40]], 'line-opacity': 0.9 } });
-      m.addLayer({ id: 'route-line', type: 'line', source: 'routes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['case', ['boolean', ['get', 'is_new'], false], '#FF7A2F', '#FFCB05'], 'line-width': ['/', ['coalesce', ['get', 'trips_per_weekday'], 30], 60] } });
+      m.addSource('buses', { type: 'geojson', data: busesAt(ts, 0) as any });
+
+      m.addLayer({ id: 'hood-fill', type: 'fill', source: 'hoods', paint: { 'fill-color': fillExpr(lo, hi), 'fill-opacity': ['case', ['boolean', ['feature-state', 'on'], false], 0.7, 0.5], 'fill-color-transition': { duration: 600 } } }, firstLabel);
+      m.addLayer({ id: 'hood-line', type: 'line', source: 'hoods', paint: { 'line-color': '#ffffff', 'line-width': ['case', ['boolean', ['feature-state', 'on'], false], 3, 1.2] } }, firstLabel);
+      const width: any = ['interpolate', ['linear'], ['zoom'], 11, ['+', 1.5, ['/', ['coalesce', ['get', 'trips_per_weekday'], 40], 60]], 15, ['+', 4, ['/', ['coalesce', ['get', 'trips_per_weekday'], 40], 25]]];
+      m.addLayer({ id: 'route-case', type: 'line', source: 'routes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-width': ['+', width, 3] } });
+      m.addLayer({ id: 'route-line', type: 'line', source: 'routes', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': lineColor, 'line-width': width } });
+      m.addLayer({ id: 'route-flow', type: 'line', source: 'routes', layout: { 'line-join': 'round' }, paint: { 'line-color': '#ffffff', 'line-opacity': 0.55, 'line-width': ['*', width, 0.45], 'line-dasharray': DASH_FRAMES[0] } });
+      m.addLayer({ id: 'route-arrows', type: 'symbol', source: 'routes', layout: { 'symbol-placement': 'line', 'symbol-spacing': 110, 'icon-image': 'chevron', 'icon-size': ['interpolate', ['linear'], ['zoom'], 11, 0.55, 15, 1], 'icon-rotation-alignment': 'map', 'icon-allow-overlap': true } });
+      m.addLayer({ id: 'bus-halo', type: 'circle', source: 'buses', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 6, 15, 11], 'circle-color': '#ffffff', 'circle-opacity': 0.9, 'circle-blur': 0.3 } });
+      m.addLayer({ id: 'bus-dot', type: 'circle', source: 'buses', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 3.5, 15, 7], 'circle-color': ['case', ['boolean', ['get', 'is_new'], false], NEW_ROUTE, ['match', ['get', 'agency'], 'umich', AGENCY.umich, AGENCY.theride]], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 } });
 
       buildMarkers();
 
@@ -89,9 +124,15 @@
       });
       m.on('mouseleave', 'hood-fill', () => { setOn(hover, false); hover = null; m.getCanvas().style.cursor = ''; });
       m.on('click', 'hood-fill', (e: any) => { selected = e.features?.[0]?.properties?.neighborhood ?? null; });
+      m.on('mousemove', 'route-line', (e: any) => {
+        const p = e.features?.[0]?.properties;
+        if (p) tip = { x: e.point.x, y: e.point.y, name: `${p.route_id.replace(/^(AA|UM|MM)-/, '')} · ${p.route_short_name}`, trips: p.trips_per_weekday, isNew: p.is_new === true || p.is_new === 'true' };
+      });
+      m.on('mouseleave', 'route-line', () => (tip = null));
       ready = true;
+      if (visible) raf = requestAnimationFrame(loop);
     });
-    return () => map?.remove();
+    return () => { cancelAnimationFrame(raf); io.disconnect(); map?.remove(); };
   });
 
   // metric/scenario/city changes
@@ -99,6 +140,7 @@
     if (!ready || !map) return;
     (map.getSource('hoods') as maplibregl.GeoJSONSource).setData(dataFor(bundle, app.metric));
     (map.getSource('routes') as maplibregl.GeoJSONSource).setData(bundle.routes as any);
+    ts = tracks(bundle.routes);
     map.setPaintProperty('hood-fill', 'fill-color', fillExpr(lo, hi));
   });
   $effect(() => {
@@ -111,12 +153,13 @@
   $effect(() => {
     if (!ready || !map) return;
     const v = showRoutes ? 'visible' : 'none';
-    map.setLayoutProperty('route-case', 'visibility', v);
-    map.setLayoutProperty('route-line', 'visibility', v);
+    for (const id of ['route-case', 'route-line', 'route-flow', 'route-arrows', 'bus-halo', 'bus-dot']) map.setLayoutProperty(id, 'visibility', v);
   });
 
   const gradient = `linear-gradient(90deg, ${HEAT.join(', ')})`;
   const newRoutes = $derived(bundle.routes.features.filter((f) => f.properties.is_new));
+  const agencies = $derived([...new Set(bundle.routes.features.map((f) => f.properties.agency))]);
+  const AGENCY_NAME: Record<string, string> = { theride: 'TheRide', umich: 'U-M buses', metro: 'Metro Transit' };
 </script>
 
 <div class="wrapper">
@@ -144,8 +187,16 @@
         <span>{fmt(app.metric, hi)}</span>
         <em>{meta.short} by neighborhood</em>
       </div>
-      {#if newRoutes.length}
-        <div class="newtag"><i></i> New routes in redesign</div>
+      <div class="rkey">
+        {#each agencies as a}<span><i style="background:{AGENCY[a] ?? AGENCY.theride}"></i>{AGENCY_NAME[a] ?? a}</span>{/each}
+        {#if newRoutes.length}<span class="new"><i style="background:{NEW_ROUTE}"></i>New in redesign</span>{/if}
+        <span class="dir">› direction of travel</span>
+      </div>
+      {#if tip}
+        <div class="tip" style="left:{tip.x}px; top:{tip.y}px">
+          <b>{tip.name}</b>{#if tip.isNew}<em>new</em>{/if}
+          {#if tip.trips}<small>{tip.trips} trips each weekday</small>{/if}
+        </div>
       {/if}
     </div>
 
@@ -191,8 +242,13 @@
   .legend { position: absolute; left: 12px; bottom: 12px; background: rgba(255, 255, 255, 0.94); border-radius: 10px; padding: 8px 12px; display: grid; grid-template-columns: auto 120px auto; gap: 8px; align-items: center; font-size: 12px; font-weight: 600; box-shadow: 0 2px 10px rgba(0, 39, 76, 0.15); z-index: 2; }
   .legend i { height: 8px; border-radius: 4px; }
   .legend em { grid-column: 1 / -1; font-style: normal; font-weight: 400; color: var(--muted); }
-  .newtag { position: absolute; left: 12px; top: 12px; background: #fff; border-radius: 999px; font-size: 12px; font-weight: 600; padding: 5px 12px 5px 10px; display: flex; gap: 8px; align-items: center; box-shadow: 0 2px 10px rgba(0, 39, 76, 0.15); z-index: 2; animation: in 0.5s var(--ease); }
-  .newtag i { width: 18px; height: 4px; border-radius: 2px; background: #ff7a2f; }
+  .rkey { position: absolute; left: 12px; top: 12px; z-index: 2; display: flex; flex-wrap: wrap; gap: 4px 12px; max-width: calc(100% - 70px); background: rgba(255, 255, 255, 0.94); border-radius: 10px; padding: 7px 12px; font-size: 12px; font-weight: 600; box-shadow: 0 2px 10px rgba(0, 39, 76, 0.15); }
+  .rkey i { display: inline-block; width: 16px; height: 4px; border-radius: 2px; margin-right: 6px; vertical-align: 3px; }
+  .rkey .new { animation: in 0.5s var(--ease); }
+  .rkey .dir { color: var(--muted); font-weight: 500; }
+  .tip { position: absolute; z-index: 3; transform: translate(12px, -110%); background: var(--blue); color: #fff; padding: 7px 10px; border-radius: 8px; font-size: 12.5px; pointer-events: none; display: grid; box-shadow: 0 6px 18px rgba(0, 39, 76, 0.3); white-space: nowrap; }
+  .tip em { font-style: normal; background: #d86018; border-radius: 4px; padding: 0 5px; font-size: 10.5px; margin-left: 6px; justify-self: start; }
+  .tip small { color: #b9c9db; }
   @keyframes in { from { opacity: 0; transform: translateY(-6px); } }
 
   .panel { padding: 22px; align-self: stretch; max-height: 640px; overflow: auto; }
