@@ -18,7 +18,7 @@ export function weighted(r: () => number, weights: number[]): number {
   return weights.length - 1;
 }
 
-/** Roughly normal sample (sum of uniforms). */
+/** Roughly normal sample: the sum of 6 uniforms has variance 1/2, so rescale by √2. */
 export function normalish(r: () => number, mean: number, sd: number): number {
-  return mean + sd * (r() + r() + r() + r() + r() + r() - 3) / Math.SQRT1_2 / 1.414;
+  return mean + (sd * (r() + r() + r() + r() + r() + r() - 3)) / Math.SQRT1_2;
 }
