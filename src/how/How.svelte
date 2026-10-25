@@ -279,7 +279,7 @@
   .lede { font-size: clamp(16px, 1.8vw, 18.5px); color: #36424f; max-width: 70ch; }
   .two { display: grid; grid-template-columns: 5fr 7fr; gap: clamp(28px, 5vw, 64px); align-items: start; }
   .text { position: sticky; top: 96px; }
-  .text p { color: #36424f; font-size: 16.5px; }
+  .text p:not(.num) { color: #36424f; font-size: 16.5px; }
   .aside { background: var(--maize-soft); border-left: 3px solid var(--maize); padding: 14px 16px; border-radius: 0 10px 10px 0; font-size: 15px; color: #3b3200; }
   .cta { display: inline-block; margin-top: 8px; font-weight: 600; color: var(--blue); text-decoration: none; border-bottom: 2px solid var(--maize); padding-bottom: 2px; }
   @media (max-width: 900px) { .two { grid-template-columns: 1fr; } .text { position: static; } }
