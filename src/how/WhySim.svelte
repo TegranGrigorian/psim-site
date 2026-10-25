@@ -13,6 +13,7 @@
     ['H4', 'Neighborhood matters as much as student or resident status.', 'Neighborhood gaps are small next to group gaps.'],
     ['H5', 'Another college town has a different gap.', 'Madison’s gap matches Ann Arbor’s.'],
     ['H6', 'A targeted redesign helps the worst-served without hurting others.', 'No improvement, or someone else loses out.'],
+    ['H7', 'Students can rely on the buses to get them to class on time.', 'Fewer than 95 in 100 class trips arrive with 5 minutes to spare.'],
   ];
   const FLOW = ['Claim', 'Simulate', 'Measure', 'Test', 'Verdict'];
 </script>
