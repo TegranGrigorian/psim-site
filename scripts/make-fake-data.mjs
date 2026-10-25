@@ -165,6 +165,25 @@ function clip(poly, [ax, ay], [bx, by]) {
   }
   return out;
 }
+// keep the part of `poly` left of the directed edge a→b (interior of a counter-clockwise outline)
+function clipEdge(poly, a, b) {
+  const side = (p) => (b[0] - a[0]) * (p[1] - a[1]) - (b[1] - a[1]) * (p[0] - a[0]); // >=0 keep
+  const out = [];
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i], q = poly[(i + 1) % poly.length];
+    const sp = side(p), sq = side(q);
+    if (sp >= 0) out.push(p);
+    if (sp >= 0 !== sq >= 0) { const t = sp / (sp - sq); out.push([p[0] + (q[0] - p[0]) * t, p[1] + (q[1] - p[1]) * t]); }
+  }
+  return out;
+}
+const ellipse = (cx, cy, rx, ry, n = 20) => Array.from({ length: n }, (_, i) => [cx + rx * Math.cos((2 * Math.PI * i) / n), cy + ry * Math.sin((2 * Math.PI * i) / n)]);
+// Rough convex city outlines (counter-clockwise), so placeholder neighborhoods don't end in a hard rectangle.
+const OUTLINE = {
+  ann_arbor: [[-83.735, 42.222], [-83.70, 42.228], [-83.675, 42.245], [-83.668, 42.27], [-83.672, 42.305], [-83.69, 42.322], [-83.73, 42.33], [-83.77, 42.322], [-83.795, 42.30], [-83.80, 42.27], [-83.79, 42.245], [-83.765, 42.228]],
+  madison: ellipse(-89.40, 43.078, 0.098, 0.04),
+};
+
 function voronoi(sites, bbox) {
   const [x0, y0, x1, y1] = bbox;
   return sites.map((s, i) => {
@@ -252,7 +271,9 @@ function build(slug, city, scen) {
   GROUPS.forEach((g) => dayType.forEach((dt) => tod.series.push({ group: g, day_type: dt, hours: Array.from({ length: 24 }, (_, h) => hour(h, g, dt)) })));
 
   // neighborhoods
-  const polys = voronoi(names.map((n) => [city.hoods[n][2], city.hoods[n][1]]), city.bbox);
+  const outline = OUTLINE[slug];
+  const polys = voronoi(names.map((n) => [city.hoods[n][2], city.hoods[n][1]]), city.bbox)
+    .map((poly) => outline.reduce((acc, a, i) => (acc.length ? clipEdge(acc, a, outline[(i + 1) % outline.length]) : acc), poly));
   const nmap = {
     type: 'FeatureCollection', schema_version: '0.1', fake: true, city_slug: slug, scenario: scen,
     features: names.map((n, i) => ({
