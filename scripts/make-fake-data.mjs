@@ -17,7 +17,7 @@ function gtfsRoutes(slug) {
   const routes = [], newRoutes = [];
   for (const ft of JSON.parse(readFileSync(f, 'utf8')).features) {
     const { ref, name, agency, trips_per_weekday } = ft.properties;
-    routes.push([`${agency === 'umich' ? 'UM' : 'AA'}-${ref}`, agency, name, ft.geometry.coordinates, trips_per_weekday]);
+    routes.push([`${{ umich: 'UM', metro: 'MM' }[agency] ?? 'AA'}-${ref}`, agency, name, ft.geometry.coordinates, trips_per_weekday]);
     if (agency === 'theride' && NIGHT_OWLS[ref]) newRoutes.push([`AA-N${ref}`, agency, NIGHT_OWLS[ref], ft.geometry.coordinates, 12]);
   }
   return { routes, newRoutes };
