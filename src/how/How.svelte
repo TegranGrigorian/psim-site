@@ -15,6 +15,8 @@
   import WhySim from './WhySim.svelte';
   import HypothesisTest from './HypothesisTest.svelte';
   import Verdicts from './Verdicts.svelte';
+  import OnTime from './OnTime.svelte';
+  import FixIt from './FixIt.svelte';
   import { tests, verdicts } from './evidence';
   import { reveal } from '../lib/actions';
   import { loadBundle, loadComparison } from '../lib/data';
@@ -23,6 +25,7 @@
 
   let bundle = $state<Bundle>();
   let madison = $state<Bundle>();
+  let redesign = $state<Bundle>();
   let comparison = $state<Comparison | null>(null);
   let inputs = $state<Inputs>();
   let progress = $state(0);
@@ -40,7 +43,9 @@
     ['threads', '7 · Many workers at once'],
     ['sumup', '8 · Sum it up'],
     ['test', '9 · Test a claim'],
-    ['verdict', '10 · What we’d know'],
+    ['ontime', '10 · On time for class?'],
+    ['verdict', '11 · What we’d know'],
+    ['fix', '12 · Fixing it'],
     ['words', 'Words to know'],
   ];
 
@@ -48,6 +53,7 @@
     const base = `${import.meta.env.BASE_URL}data/ann_arbor`;
     loadBundle('ann_arbor', 'baseline').then((b) => (bundle = b));
     loadBundle('madison', 'baseline').then((b) => (madison = b)).catch(() => {});
+    loadBundle('ann_arbor', 'redesign_v1').then((b) => (redesign = b)).catch(() => {});
     loadComparison('ann_arbor', 'redesign_v1').then((c) => (comparison = c));
     fetch(`${base}/inputs.json`).then((r) => r.json()).then((j) => (inputs = j)).catch(() => {});
 
@@ -278,10 +284,25 @@
     </div>
   </section>
 
-  <section id="verdict" class="step">
+  <section id="ontime" class="step">
     <div class="wrap">
       <div class="head" use:reveal data-reveal>
-        <p class="num">Step 10</p>
+        <p class="num">Step 10 · H7</p>
+        <h2>Can students count on the bus to get to class on time?</h2>
+        <p class="lede">
+          A claim people make about Ann Arbor’s buses is that students can rely on them. “Rely on” needs a number before we look,
+          or it can be bent to fit any result. Here it means at least 95 of every 100 class trips arrive with five minutes to spare
+          (you can move the bar to see how much the answer depends on it).
+        </p>
+      </div>
+      {#if bundle}<OnTime {bundle} />{/if}
+    </div>
+  </section>
+
+  <section id="verdict" class="step alt">
+    <div class="wrap">
+      <div class="head" use:reveal data-reveal>
+        <p class="num">Step 11</p>
         <h2>What we’d know</h2>
         <p class="lede">
           Each hypothesis from the top of the page, with the evidence and the test behind its verdict. These verdicts are worked out
@@ -304,6 +325,20 @@
           </div>
         </div>
       {/if}
+    </div>
+  </section>
+
+  <section id="fix" class="step">
+    <div class="wrap">
+      <div class="head" use:reveal data-reveal>
+        <p class="num">Step 12</p>
+        <h2>How could we fix it?</h2>
+        <p class="lede">
+          The same simulation that finds the problem can test a fix before anyone spends money on it: find where trips fail,
+          change the timetable there, rerun the exact same towns, and compare.
+        </p>
+      </div>
+      {#if bundle && redesign && comparison}<FixIt before={bundle} after={redesign} {comparison} />{/if}
     </div>
   </section>
 
