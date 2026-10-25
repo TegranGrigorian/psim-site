@@ -112,6 +112,7 @@
       <b>{clock(M.start + t)}</b>
       <span style="color:{COLOR[cur.p.k]}">{cur.p.label}{cur.p.k !== 'walk' && cur.p.k !== 'ride' && !done ? ` · ${Math.floor(cur.into)} min` : ''}</span>
     </div>
+    <div class="scroll">
     <svg viewBox="0 0 900 270" role="img" aria-label="Animated trip from home to class">
       <g class="city" aria-hidden="true">
         <path d="M0 210 H900 M0 110 H900 M300 0 V270 M640 0 V270" />
@@ -144,6 +145,7 @@
         </g>
       {/if}
     </svg>
+    </div>
   </div>
 
   <div class="stack" aria-hidden="true">
@@ -179,6 +181,7 @@
   .replay { border: 1px solid var(--rule); background: #fff; border-radius: 999px; padding: 8px 16px; font-weight: 500; font-size: 14px; }
   .replay:disabled { opacity: 0.6; cursor: default; }
   .stage { position: relative; background: #f6f3ea; border-radius: 12px; overflow: hidden; }
+  .scroll { overflow-x: auto; }
   .clock { position: absolute; left: 14px; top: 12px; display: grid; z-index: 1; }
   .clock b { font-family: var(--serif); font-size: clamp(24px, 3.4vw, 34px); color: var(--blue); font-variant-numeric: tabular-nums; line-height: 1.1; }
   .clock span { font-size: 13.5px; font-weight: 600; transition: color 0.3s; }
@@ -211,4 +214,8 @@
   .result p { margin: 0 0 8px; }
   .result code { display: block; font-size: 12.5px; background: rgba(255, 255, 255, 0.7); padding: 8px 10px; border-radius: 8px; overflow-wrap: anywhere; }
   @keyframes pop { from { opacity: 0; transform: translateY(6px); } }
+  @media (max-width: 640px) {
+    .clock { position: static; padding: 12px 14px 0; }
+    svg { min-width: 620px; margin-top: 0; }
+  }
 </style>
