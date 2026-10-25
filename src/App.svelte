@@ -98,7 +98,7 @@
           <div class="kicker" use:reveal data-reveal><b>04</b> Who gets left out</div>
           <h2 use:reveal data-reveal>Redrawing the network</h2>
           <p class="lede" use:reveal data-reveal>
-            Redesign v1 edits the Ann Arbor timetable to add late-night and crosstown service, then reruns the same simulation.
+            Redesign v1 edits the Ann Arbor timetable to add late-night Night Owl service on two corridors, then reruns the same simulation.
             Did it help the people the baseline fails most, and what did it cost everyone else?
           </p>
           <Redesign {comparison} />
