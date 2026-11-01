@@ -185,7 +185,8 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # self-hosted runner; add labels if you have several, e.g. [self-hosted, linux]
+    runs-on: self-hosted
     steps:
       - name: Check out psim (data and docs)
         uses: actions/checkout@v4
@@ -196,6 +197,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: psim/psim-site
+      # installs Node into the runner's tool cache, so the machine itself doesn't need it
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -211,7 +213,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     environment:
       name: github-pages
       url: \${{ steps.deployment.outputs.page_url }}
@@ -426,13 +428,15 @@ jobs:
 
     <section id="deploy">
       <h2>Deploy to GitHub Pages</h2>
-      <p>The site is plain static files with relative paths, so it works at <code>https://&lt;user&gt;.github.io/psim-site/</code> without changes. The build needs the <code>psim</code> repo’s <code>data/</code> and <code>docs/</code>, so the workflow checks out both.</p>
+      <p>The site is plain static files with relative paths, so it works at <code>https://&lt;user&gt;.github.io/psim-site/</code> without changes. The build needs the <code>psim</code> repo’s <code>data/</code> and <code>docs/</code>, so the workflow checks out both. It runs on a <b>self-hosted runner</b>; the machine needs <code>git</code> and <code>tar</code> (Linux or macOS), and the workflow installs Node itself.</p>
       <ol>
         <li>Commit and push the summaries in the <code>psim</code> repo:<Code code={C.pushData} /></li>
+        <li>Register the runner if you haven’t: <b>psim-site → Settings → Actions → Runners → New self-hosted runner</b>, and follow the commands GitHub shows. Run it as a service (<code>sudo ./svc.sh install &amp;&amp; sudo ./svc.sh start</code>) so it survives reboots.</li>
         <li>In <code>psim-site</code>, the workflow lives at <code>{C.workflowPath}</code>:<Code title="deploy.yml" lang="yaml" code={WORKFLOW} /></li>
         <li>On GitHub, open <b>psim-site → Settings → Pages</b> and set <b>Source</b> to <b>GitHub Actions</b>.</li>
         <li>Push to <code>master</code>. The site appears at <code>https://tegrangrigorian.github.io/psim-site/</code>. After pushing new data to <code>psim</code>, rerun the workflow from the Actions tab (it has a manual trigger).</li>
       </ol>
+      <p class="note">Security: a self-hosted runner executes whatever a workflow tells it to on your machine. This workflow only runs on pushes to <code>master</code> and manual triggers, never on pull requests, so strangers can’t run code on it. Keep it that way, and leave “Require approval for all outside collaborators” on under Settings → Actions.</p>
       <p class="note">Custom domain: add a <code>public/CNAME</code> file containing the domain, then set the DNS record GitHub shows in the Pages settings.</p>
     </section>
 
