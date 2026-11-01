@@ -1,0 +1,11 @@
+# Local run: cd psim-site && docker compose up --build -d   ->  http://localhost:8080
+services:
+  psim-site:
+    build:
+      context: ..
+      dockerfile: psim-site/Dockerfile
+    image: psim-site:latest
+    container_name: psim-site
+    ports:
+      - "${SITE_PORT:-8080}:80"
+    restart: unless-stopped

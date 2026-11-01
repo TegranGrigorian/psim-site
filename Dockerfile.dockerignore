@@ -1,0 +1,11 @@
+# Applies to `docker build -f psim-site/Dockerfile` with the psim folder as context.
+**/.git
+**/node_modules
+psim-site/dist
+psim-site/public/data
+psim-site/public/ref
+psim-tools
+psim-engine
+data/*/raw
+data/*/generated
+data/*/results
