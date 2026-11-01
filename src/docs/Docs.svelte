@@ -19,7 +19,7 @@
     ['data', 'Using your own data'],
     ['internals', 'Website internals'],
     ['contract', 'Data the site reads'],
-    ['deploy', 'Deploy to GitHub Pages'],
+    ['deploy', 'Deploy (self-hosted)'],
     ['trouble', 'Troubleshooting'],
     ['ref', 'Reference: PLAN & SCHEMA'],
     ['credits', 'Credits & licenses'],
@@ -149,6 +149,7 @@ node scripts/road-paths.mjs ann_arbor    # road paths for the How page (calls th
 npm run fake-data`,
     layout: `psim-site/
   index.html, how.html, docs.html   # the three pages
+  Dockerfile, nginx.conf, compose.yaml  # container that serves the built site
   src/
     App.svelte          # results page
     how/                # How it works page and its animations
@@ -162,6 +163,10 @@ npm run fake-data`,
     road-paths.mjs      # OSRM road paths -> public/how/<city>_paths.json
   public/               # static files; data/ and ref/ are generated, not committed`,
     workflowPath: `.github/workflows/deploy.yml`,
+    docker: `cd psim                       # the folder that holds data/, docs/ and psim-site/
+docker build -f psim-site/Dockerfile -t psim-site .
+docker run -d --name psim-site --restart unless-stopped -p 8080:80 psim-site
+# or, from psim-site/:  docker compose up --build -d`,
     pushData: `cd psim
 git add data/*/summaries data/summaries_index.json
 git commit -m "Update summaries"
@@ -169,6 +174,8 @@ git push`,
   };
   const WORKFLOW = `name: Deploy site
 
+# Builds the site into a Docker image on the self-hosted runner and (re)starts it
+# as a container on that machine. Port: repo variable SITE_PORT (default 8080).
 on:
   push:
     branches: [master]
@@ -176,17 +183,17 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: deploy
   cancel-in-progress: true
 
 jobs:
-  build:
-    # self-hosted runner; add labels if you have several, e.g. [self-hosted, linux]
+  deploy:
+    # add labels if you have several runners, e.g. [self-hosted, linux]
     runs-on: self-hosted
+    env:
+      SITE_PORT: \${{ vars.SITE_PORT || '8080' }}
     steps:
       - name: Check out psim (data and docs)
         uses: actions/checkout@v4
@@ -197,29 +204,34 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: psim/psim-site
-      # installs Node into the runner's tool cache, so the machine itself doesn't need it
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: psim/psim-site/package-lock.json
-      - run: npm ci
-        working-directory: psim/psim-site
-      - run: npm run build
-        working-directory: psim/psim-site
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: psim/psim-site/dist
 
-  deploy:
-    needs: build
-    runs-on: self-hosted
-    environment:
-      name: github-pages
-      url: \${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4`;
+      - name: Build image
+        working-directory: psim
+        run: docker build -f psim-site/Dockerfile -t psim-site:\${{ github.sha }} -t psim-site:latest .
+
+      - name: Replace running container
+        run: |
+          docker rm -f psim-site 2>/dev/null || true
+          docker run -d --name psim-site --restart unless-stopped \\
+            -p "\${SITE_PORT}:80" psim-site:\${{ github.sha }}
+
+      - name: Check the site answers
+        run: |
+          for i in $(seq 1 20); do
+            curl -fsS "http://localhost:\${SITE_PORT}/" >/dev/null && echo "Up on port \${SITE_PORT}" && exit 0
+            sleep 1
+          done
+          docker logs psim-site
+          exit 1
+
+      - name: Remove old images
+        if: success()
+        run: |
+          # keep the image now running and "latest"; drop earlier deploys and dangling layers
+          docker images psim-site --format '{{.Tag}}' \\
+            | grep -vxE "latest|\${{ github.sha }}" \\
+            | xargs -r -I{} docker rmi "psim-site:{}" || true
+          docker image prune -f`;
 </script>
 
 <Nav page="docs" />
@@ -253,7 +265,7 @@ jobs:
           <tr><td><a href="{GH}/psim" target="_blank" rel="noopener">psim</a></td><td>—</td><td>Plan, schema, city data, summaries</td><td><em class="st ok">Active</em></td></tr>
           <tr><td><a href="{GH}/psim-tools" target="_blank" rel="noopener">psim-tools</a></td><td>Rust</td><td><code>generate</code> personas and trips; <code>analyze</code> results into summaries</td><td><em class="st wip">In progress</em></td></tr>
           <tr><td>psim-engine</td><td>Python (r5py)</td><td>Routes every trip over GTFS + OpenStreetMap</td><td><em class="st plan">Planned</em></td></tr>
-          <tr><td><a href="{GH}/psim-site" target="_blank" rel="noopener">psim-site</a></td><td>TypeScript, Svelte</td><td>This static website</td><td><em class="st ok">Working on sample data</em></td></tr>
+          <tr><td><a href="{GH}/psim-site" target="_blank" rel="noopener">psim-site</a></td><td>TypeScript, Svelte</td><td>This static website, served from a Docker container on the self-hosted runner</td><td><em class="st ok">Working on sample data</em></td></tr>
         </tbody>
       </table>
       <p class="note">Anything marked <b>placeholder</b> below describes the planned interface from <code>PLAN.md</code>; it will change as the tools are built.</p>
@@ -427,17 +439,23 @@ jobs:
     </section>
 
     <section id="deploy">
-      <h2>Deploy to GitHub Pages</h2>
-      <p>The site is plain static files with relative paths, so it works at <code>https://&lt;user&gt;.github.io/psim-site/</code> without changes. The build needs the <code>psim</code> repo’s <code>data/</code> and <code>docs/</code>, so the workflow checks out both. It runs on a <b>self-hosted runner</b>; the machine needs <code>git</code> and <code>tar</code> (Linux or macOS), and the workflow installs Node itself.</p>
+      <h2>Deploy on the self-hosted runner</h2>
+      <p>The site is served from your own machine: a GitHub Actions workflow on a <b>self-hosted runner</b> builds a Docker image (Node builds the site, nginx serves it) and keeps it running as a container on that machine. Nothing is published to GitHub Pages.</p>
+      <h3>One-time setup on the runner machine</h3>
+      <ol>
+        <li>Install Docker and make sure the runner’s user can use it (<code>sudo usermod -aG docker &lt;runner-user&gt;</code>, then restart the runner service).</li>
+        <li>Register the runner if you haven’t: <b>psim-site → Settings → Actions → Runners → New self-hosted runner</b>, then run it as a service (<code>sudo ./svc.sh install &amp;&amp; sudo ./svc.sh start</code>) so it survives reboots.</li>
+        <li>Optional: set a repository variable <code>SITE_PORT</code> (Settings → Secrets and variables → Actions → Variables) to change the port from 8080.</li>
+      </ol>
+      <h3>Every deploy</h3>
       <ol>
         <li>Commit and push the summaries in the <code>psim</code> repo:<Code code={C.pushData} /></li>
-        <li>Register the runner if you haven’t: <b>psim-site → Settings → Actions → Runners → New self-hosted runner</b>, and follow the commands GitHub shows. Run it as a service (<code>sudo ./svc.sh install &amp;&amp; sudo ./svc.sh start</code>) so it survives reboots.</li>
-        <li>In <code>psim-site</code>, the workflow lives at <code>{C.workflowPath}</code>:<Code title="deploy.yml" lang="yaml" code={WORKFLOW} /></li>
-        <li>On GitHub, open <b>psim-site → Settings → Pages</b> and set <b>Source</b> to <b>GitHub Actions</b>.</li>
-        <li>Push to <code>master</code>. The site appears at <code>https://tegrangrigorian.github.io/psim-site/</code>. After pushing new data to <code>psim</code>, rerun the workflow from the Actions tab (it has a manual trigger).</li>
+        <li>Push <code>psim-site</code> to <code>master</code>, or rerun the workflow from the Actions tab after a data-only change. It lives at <code>{C.workflowPath}</code>:<Code title="deploy.yml" lang="yaml" code={WORKFLOW} /></li>
+        <li>Open <code>http://&lt;runner-machine&gt;:8080</code>. To reach it from outside your network, put it behind a reverse proxy or tunnel of your choice.</li>
       </ol>
+      <h3>Run the same container by hand</h3>
+      <Code code={C.docker} />
       <p class="note">Security: a self-hosted runner executes whatever a workflow tells it to on your machine. This workflow only runs on pushes to <code>master</code> and manual triggers, never on pull requests, so strangers can’t run code on it. Keep it that way, and leave “Require approval for all outside collaborators” on under Settings → Actions.</p>
-      <p class="note">Custom domain: add a <code>public/CNAME</code> file containing the domain, then set the DNS record GitHub shows in the Pages settings.</p>
     </section>
 
     <section id="trouble">
@@ -446,6 +464,8 @@ jobs:
         <dt>Phone says the site can’t be found</dt><dd>The dev server only listens on your computer by default. Start it with <code>npm run dev -- --host</code> and use the <i>Network</i> address.</dd>
         <dt>“Data not found” on load</dt><dd>No summaries yet. Run <code>npm run fake-data</code>, then <code>npm run dev</code> again.</dd>
         <dt>Maps are blank</dt><dd>The basemap comes from <code>tiles.openfreemap.org</code>; check your connection or any blocker extensions. Routes and shading still draw without it.</dd>
+        <dt>Deploy step: “permission denied … docker.sock”</dt><dd>The runner’s user isn’t in the <code>docker</code> group. Add it, then restart the runner service.</dd>
+        <dt>Deploy step: “port is already allocated”</dt><dd>Something else uses 8080 on the runner. Set the <code>SITE_PORT</code> repository variable to a free port.</dd>
         <dt><code>npm install</code> fails</dt><dd>Check <code>node --version</code> is 20 or newer.</dd>
         <dt><code>cargo build</code>: “edition 2024 is unstable” or link errors</dt><dd>Run <code>rustup update stable</code>. On Windows, install the MSVC C++ build tools (see prerequisites).</dd>
         <dt>Windows won’t run <code>Activate.ps1</code></dt><dd><code>Set-ExecutionPolicy -Scope CurrentUser RemoteSigned</code>, then try again.</dd>
