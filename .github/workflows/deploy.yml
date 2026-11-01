@@ -1,5 +1,7 @@
 name: Deploy site
 
+# Builds the site into a Docker image on the self-hosted runner and (re)starts it
+# as a container on that machine. Port: repo variable SITE_PORT (default 8080).
 on:
   push:
     branches: [master]
@@ -7,17 +9,17 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
+  group: deploy
   cancel-in-progress: true
 
 jobs:
-  build:
-    # self-hosted runner; add labels if you have several, e.g. [self-hosted, linux]
+  deploy:
+    # add labels if you have several runners, e.g. [self-hosted, linux]
     runs-on: self-hosted
+    env:
+      SITE_PORT: ${{ vars.SITE_PORT || '8080' }}
     steps:
       - name: Check out psim (data and docs)
         uses: actions/checkout@v4
@@ -28,26 +30,31 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: psim/psim-site
-      # installs Node into the runner's tool cache, so the machine itself doesn't need it
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: psim/psim-site/package-lock.json
-      - run: npm ci
-        working-directory: psim/psim-site
-      - run: npm run build
-        working-directory: psim/psim-site
-      - uses: actions/upload-pages-artifact@v3
-        with:
-          path: psim/psim-site/dist
 
-  deploy:
-    needs: build
-    runs-on: self-hosted
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - id: deployment
-        uses: actions/deploy-pages@v4
+      - name: Build image
+        working-directory: psim
+        run: docker build -f psim-site/Dockerfile -t psim-site:${{ github.sha }} -t psim-site:latest .
+
+      - name: Replace running container
+        run: |
+          docker rm -f psim-site 2>/dev/null || true
+          docker run -d --name psim-site --restart unless-stopped \
+            -p "${SITE_PORT}:80" psim-site:${{ github.sha }}
+
+      - name: Check the site answers
+        run: |
+          for i in $(seq 1 20); do
+            curl -fsS "http://localhost:${SITE_PORT}/" >/dev/null && echo "Up on port ${SITE_PORT}" && exit 0
+            sleep 1
+          done
+          docker logs psim-site
+          exit 1
+
+      - name: Remove old images
+        if: success()
+        run: |
+          # keep the image now running and "latest"; drop earlier deploys and dangling layers
+          docker images psim-site --format '{{.Tag}}' \
+            | grep -vxE "latest|${{ github.sha }}" \
+            | xargs -r -I{} docker rmi "psim-site:{}" || true
+          docker image prune -f
