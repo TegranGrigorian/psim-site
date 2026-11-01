@@ -16,7 +16,8 @@ concurrency:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # self-hosted runner; add labels if you have several, e.g. [self-hosted, linux]
+    runs-on: self-hosted
     steps:
       - name: Check out psim (data and docs)
         uses: actions/checkout@v4
@@ -27,6 +28,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: psim/psim-site
+      # installs Node into the runner's tool cache, so the machine itself doesn't need it
       - uses: actions/setup-node@v4
         with:
           node-version: 22
@@ -42,7 +44,7 @@ jobs:
 
   deploy:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
