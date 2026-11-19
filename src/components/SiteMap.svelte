@@ -204,7 +204,7 @@
     <aside class="panel card">
       {#if sel}
         <h3>{sel.name}</h3>
-        <p class="note">About {Math.round(sel.n_personas_mean)} of 1,000 personas live here.{#if sel.n_personas_mean < 10} With so few, these numbers swing a lot from run to run.{/if}</p>
+        <p class="note">About {Math.round(sel.n_personas_mean)} of 1,000 personas live here.{#if sel.n_personas_mean < 10}{' '}With so few, these numbers swing a lot from run to run.{/if}</p>
         <dl>
           {#each METRICS.slice(0, 4) as m}
             {@const iv = metricOf(sel.metrics, m.key)}

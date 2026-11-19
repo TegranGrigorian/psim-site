@@ -10,7 +10,7 @@
   import { nRuns, onTime, runs } from './evidence';
   import type { GroupMetrics } from '../lib/types';
 
-  let { metrics }: { metrics: GroupMetrics } = $props();
+  let { metrics, onTimeShare = null }: { metrics: GroupMetrics; onTimeShare?: number | null } = $props();
 
   // on_time_rate is null until the delay model has run; only groups that have it get a tab
   const WHO = $derived([
@@ -74,7 +74,16 @@
   const reps = $derived(runs(iv, 300 + who, false, nRuns(metrics)).map((v) => v * 100));
   const test = $derived(oneSampleT(reps, target));
   const verdict = $derived(test.m > target && test.pAbove < 0.05 ? 'reliable' : test.m < target && test.pBelow < 0.05 ? 'unreliable' : 'unclear');
-  const D0 = 85, D1 = 100, H2 = 150;
+  // the axis widens to fit the simulated spread (real on-time rates sit well below the old 85% floor)
+  const H2 = 150, D1 = 100;
+  const D0 = $derived(Math.max(0, Math.floor(Math.min(85, test.m - 3.5 * test.s, target - 5) / 5) * 5));
+  const ticks = $derived.by(() => {
+    const span = D1 - D0, want = W < 520 ? 4 : 7;
+    const step = [1, 2, 5, 10, 20, 25].find((x) => span / x <= want) ?? 25;
+    const out: number[] = [];
+    for (let v = Math.ceil((D0 + 0.5) / step) * step; v < D1; v += step) out.push(v);
+    return out;
+  });
   const W2 = $derived(W);
   const bx = (v: number) => ((v - D0) / (D1 - D0)) * W2;
   const bell = $derived.by(() => {
@@ -124,7 +133,7 @@
     <line class="tg" x1={bx(target)} x2={bx(target)} y1="6" y2={H2 - 22} />
     <text class="tgl" x={bx(target) + 6} y="20">bar: {target}%</text>
     <line class="axis" x1="0" x2={W2} y1={H2 - 22} y2={H2 - 22} />
-    {#each W < 520 ? [86, 90, 94, 98] : [86, 88, 90, 92, 94, 96, 98] as v}<text class="tk" x={bx(v)} y={H2 - 6}>{v}%</text>{/each}
+    {#each ticks as v}<text class="tk" x={bx(v)} y={H2 - 6}>{v}%</text>{/each}
   </svg>
 
   <h4>3 · The test</h4>
@@ -141,7 +150,10 @@
       {:else}{WHO[who].label} average {test.m.toFixed(1)}%, too close to the {target}% bar to call either way.{/if}
     </p>
   </div>
-  <p class="note">Uses scheduled times only. Real buses run late; the ride-along fieldwork measures how much that would pull these numbers down.</p>
+  <p class="note">
+    Arrival times include lateness from a delay model calibrated to the bus agency’s published on-time rate{#if onTimeShare}{' '}({Math.round(onTimeShare * 100)}% of buses on time){/if}.
+    The dots in part 1 are illustrative, spread around the simulated on-time share. Crowding is not modelled; the ride-along fieldwork checks both.
+  </p>
 </div>
 {:else}
   <div use:reveal data-reveal>

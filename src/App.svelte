@@ -13,8 +13,8 @@
   import { nearView, reveal } from './lib/actions';
   import { app } from './lib/state.svelte';
   import { METRICS } from './lib/format';
-  import { hasScenario, loadComparison, loadCore, loadGeo, loadIndex } from './lib/data';
-  import type { Comparison, Core, Geo, Index } from './lib/types';
+  import { hasScenario, loadComparison, loadCore, loadGeo, loadIndex, loadMeta, loadReport, loadScenarioSpec } from './lib/data';
+  import type { CityMeta, Comparison, Core, Geo, Index, Report, ScenarioSpec } from './lib/types';
 
   // Nothing here waits on data before drawing: the hero paints at once, each section fills in when
   // its (small) file arrives, and the map code (MapLibre) and map files load only near the map.
@@ -22,6 +22,9 @@
   let core = $state<Record<string, Core>>({});
   let geo = $state<Record<string, Geo>>({});
   let comparison = $state<Comparison | null>();
+  let spec = $state<ScenarioSpec | null>();
+  let report = $state<Report | null>();
+  let meta = $state<Record<string, CityMeta | null>>({});
   let error = $state('');
   let SiteMap = $state<typeof SiteMapComponent>();
   let mapWanted = $state(false);
@@ -40,6 +43,7 @@
       })
       .catch((e) => (error = String(e)));
     first.catch(() => {}); // reported by the effect below if the index really lists it
+    loadReport().then((r) => (report = r));
   });
 
   const city = $derived(index?.cities.find((c) => c.slug === app.city));
@@ -56,7 +60,13 @@
     if (second && !core[`${second.slug}/baseline`]) keep(core, `${second.slug}/baseline`, loadCore(second.slug, 'baseline'));
   });
   $effect(() => {
-    if (hasRedesign && comparison === undefined) loadComparison('ann_arbor', 'redesign_v1').then((c) => (comparison = c));
+    if (hasRedesign && comparison === undefined) {
+      loadComparison('ann_arbor', 'redesign_v1').then((c) => (comparison = c));
+      loadScenarioSpec('ann_arbor', 'redesign_v1').then((x) => (spec = x));
+    }
+  });
+  $effect(() => {
+    for (const c of index?.cities ?? []) if (!(c.slug in meta)) { meta[c.slug] = null; loadMeta(c.slug).then((m) => (meta[c.slug] = m)); }
   });
   $effect(() => {
     if (!mapWanted || !city) return;
@@ -72,6 +82,12 @@
   const geoNow = $derived(city ? geo[`${city.slug}/${scenario}`] ?? geo[`${city.slug}/baseline`] : undefined);
   const geoBase = $derived(city ? geo[`${city.slug}/baseline`] : undefined);
   const name = $derived(city?.display_name ?? 'Ann Arbor, MI');
+  // Method facts, read from the data rather than typed in
+  const nRep = $derived(base?.groupMetrics.n_replicates);
+  const seeds = $derived.by(() => { const s = city ? meta[city.slug]?.seeds : null; return s && nRep && s[1] - s[0] + 1 === nRep ? s : null; });
+  const people = $derived((city ? meta[city.slug]?.population_size : null)?.toLocaleString('en-US') ?? '1,000');
+  const AGENCY: Record<string, string> = { ann_arbor: 'TheRide', madison: 'Madison Metro' };
+  const reliability = $derived((index?.cities ?? []).flatMap((c) => { const v = meta[c.slug]?.on_time_share; return v ? [`${AGENCY[c.slug] ?? c.display_name} ${Math.round(v * 100)}%`] : []; }));
 </script>
 
 {#if index?.fake}
@@ -137,10 +153,10 @@
       <h2 use:reveal data-reveal>Redrawing the network</h2>
       {#if hasRedesign && comparison}
         <p class="lede" use:reveal data-reveal>
-          Redesign v1 edits the Ann Arbor timetable, then reruns the same simulation.
-          Did it help the people the baseline fails most, and what did it cost everyone else?
+          Redesign v1 makes one targeted edit to the Ann Arbor timetable, aimed at the neighborhood where trips failed most often,
+          then reruns the exact same simulated towns. Did it help there, and did anyone else lose out?
         </p>
-        <Redesign {comparison} />
+        <Redesign {comparison} {spec} />
       {:else}
         <p class="lede" use:reveal data-reveal>
           The plan: edit the Ann Arbor timetable where trips fail most, rerun the exact same simulated town, and see who gains and who loses.
@@ -177,7 +193,7 @@
       <div class="kicker" use:reveal data-reveal><b>06</b> Stated up front</div>
       <h2 use:reveal data-reveal>Hypotheses that can fail</h2>
       <p class="lede" use:reveal data-reveal>Written before running anything. A hypothesis the data does not support is a finding, not a problem.</p>
-      <Hypotheses />
+      <Hypotheses {report} />
     </div>
   </section>
 
@@ -189,14 +205,15 @@
       </div>
       <div use:reveal data-reveal>
         <ol>
-          <li><b>Personas.</b> 1,000 synthetic people per replicate, each with a group, a home and a workplace or campus anchor, drawn from Census, housing and enrollment data.</li>
+          <li><b>Personas.</b> {people} synthetic people per replicate, each with a group, a home and a workplace or campus anchor, drawn from Census, housing and enrollment data.</li>
           <li><b>Trips.</b> A weekly routine per person: commute or class, and the return, with shift patterns setting departure times.</li>
           <li><b>Routing.</b> Every trip routed door to door over GTFS and OpenStreetMap with r5py. A trip that cannot be completed counts as a failure, not a missing row.</li>
-          <li><b>Replication.</b> 100 replicates (seeds 42 to 141) give 95% intervals on every metric.</li>
+          <li><b>Delays.</b> Buses run late. On-time arrival comes from a delay model calibrated to each agency’s published on-time rate{#if reliability.length}{' '}({reliability.join(', ')}){/if}; U-M buses publish no figure, so the same is assumed for them.</li>
+          <li><b>Replication.</b> {#if nRep}{nRep} replicates{#if seeds}{' '}(seeds {seeds[0]} to {seeds[1]}){/if}{:else}Many replicates{/if} give 95% intervals on every metric.{#if index?.fake}{' '}These are preliminary runs; more are planned.{/if}</li>
         </ol>
         <h3>Limits, plainly</h3>
         <ul>
-          <li>The model uses scheduled service, not real service. It does not capture lateness or crowding; ride-alongs address those.</li>
+          <li>Lateness is modelled from published averages, not from real trip-by-trip data, and crowding (a full bus passing riders by) is not modelled at all; ride-alongs address both.</li>
           <li>Transit only. “Failure” means no transit option, not no way to travel.</li>
           <li>Synthetic people show what the system’s design does to a plausible population, not what residents actually experience.</li>
         </ul>

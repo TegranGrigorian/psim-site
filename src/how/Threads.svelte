@@ -60,9 +60,9 @@
   const base = $derived(history.find((h) => h.w === 1)?.t);
 
   const USES = [
-    { tool: 'psim-tools generate', lang: 'Rust · rayon', status: 'In progress', text: 'Each of the 100 towns is built on whichever core is free. Every town has its own seed, so it comes out the same no matter which core builds it or when.' },
-    { tool: 'psim-engine', lang: 'Python → R5 (Java)', status: 'Planned', text: 'The router works out many trips at once across all cores. Identical questions (same start, end and time) are answered once and reused, which cuts the work a lot.' },
-    { tool: 'psim-tools analyze', lang: 'Rust · rayon', status: 'Planned', text: 'Each core adds up its share of trip results by group; the partial sums are then combined. Adding in a different order gives the same totals.' },
+    { tool: 'psim-tools generate', lang: 'Rust', status: 'Built', text: 'Every town has its own seed, so it comes out the same no matter which worker builds it or when.' },
+    { tool: 'psim-engine', lang: 'Python → R5 (Java)', status: 'Built', text: 'The router splits the trips across several worker processes, each with its own copy of the street and bus network, and works on them at the same time. Identical questions (same start, end and time) are answered once and reused.' },
+    { tool: 'psim-tools analyze', lang: 'Rust', status: 'Built', text: 'Trip results are added up by group; adding in a different order gives the same totals, so the work can be split safely.' },
   ];
 </script>
 
@@ -129,7 +129,7 @@
     </div>
   {/each}
 </div>
-<p class="fine" use:reveal data-reveal>Times above are illustrative. This is the planned design; the engine isn’t built yet, and real speed-ups will be measured once it runs.</p>
+<p class="fine" use:reveal data-reveal>Times above are illustrative, not measurements. The routing engine does split its work across several workers like this.</p>
 
 <style>
   .analogy { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 26px; }
