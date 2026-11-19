@@ -9,7 +9,8 @@
   import { metricOf } from '../lib/metrics';
   import type { Geo } from '../lib/types';
 
-  let { before, after }: { before: Geo; after: Geo } = $props();
+  // highlight: route ids the redesign adds or edits (new routes are always included)
+  let { before, after, highlight = [] }: { before: Geo; after: Geo; highlight?: string[] } = $props();
   maplibregl.setWorkerUrl(workerUrl);
 
   const BASEMAP = 'https://tiles.openfreemap.org/styles/positron';
@@ -24,7 +25,7 @@
   const vb = $derived(fr(before)), va = $derived(fr(after));
   const all = $derived([...Object.values(vb), ...Object.values(va)]);
   const lo = $derived(all.length ? Math.min(...all) : 0), hi = $derived(all.length ? Math.max(...all) : 1);
-  const newRoutes = $derived(after.routes.features.filter((f) => f.properties.is_new));
+  const newRoutes = $derived(after.routes.features.filter((f) => f.properties.is_new || highlight.includes(f.properties.route_id)));
   const fmt = (v: number) => `${(v * 100).toFixed(1)}%`;
 
   onMount(() => {
@@ -100,7 +101,7 @@
       <button aria-pressed={!showAfter} onclick={() => choose(false)}>Today’s network</button>
       <button aria-pressed={showAfter} onclick={() => choose(true)}>Redesign v1</button>
     </div>
-    <span class="hint">{showAfter ? 'New routes in orange; shading shows the failure rate after the change' : 'Shading shows how often trips fail today'}</span>
+    <span class="hint">{showAfter ? 'Changed routes in orange; shading shows the failure rate after the change' : 'Shading shows how often trips fail today'}</span>
   </div>
   <div class="grid">
     <div class="map" bind:this={el}>

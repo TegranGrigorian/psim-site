@@ -6,12 +6,13 @@
   import Pending from '../components/Pending.svelte';
   import type RedesignMapComponent from './RedesignMap.svelte';
   import { hoodRates } from './evidence';
-  import type { Bundle, Comparison, Core, Geo } from '../lib/types';
+  import { changes } from '../lib/redesign';
+  import type { Bundle, Comparison, Core, Geo, ScenarioSpec } from '../lib/types';
 
   // `before` is the baseline summary, always available. The redesign parts appear only once that
   // scenario has been simulated; until then they say so.
-  let { before, beforeGeo, after, comparison, RedesignMap }: {
-    before: Core; beforeGeo?: Geo; after?: Bundle; comparison?: Comparison | null; RedesignMap?: typeof RedesignMapComponent;
+  let { before, beforeGeo, after, comparison, spec, RedesignMap }: {
+    before: Core; beforeGeo?: Geo; after?: Bundle; comparison?: Comparison | null; spec?: ScenarioSpec | null; RedesignMap?: typeof RedesignMapComponent;
   } = $props();
 
   const hourName = (h: number) => (h === 0 ? '12 am' : h < 12 ? `${h} am` : h === 12 ? '12 pm' : `${h - 12} pm`);
@@ -38,6 +39,9 @@
   });
   const ready = $derived(!!(after && comparison && beforeGeo));
   const newRoutes = $derived(after?.routes.features.filter((f) => f.properties.is_new) ?? []);
+  const what = $derived(changes(spec));
+  // routes the redesign adds or edits, highlighted on the map
+  const changed = $derived([...new Set([...newRoutes.map((f) => f.properties.route_id), ...(spec?.routes ?? []).map((r) => r.route)])]);
 </script>
 
 <div class="steps">
@@ -61,8 +65,12 @@
     <b>Change the timetable</b>
     <ul>
       {#if ready}
-        {#each newRoutes as r}<li><b>{r.properties.route_short_name.replace(' (new)', '')}</b>: about {r.properties.trips_per_weekday ?? '?'} trips a weekday on an existing corridor.</li>{/each}
-        <li>Nothing else changes, so any difference comes from these routes alone.</li>
+        {#if what.length}
+          {#each what as line}<li>{line}</li>{/each}
+        {:else}
+          {#each newRoutes as r}<li><b>{r.properties.route_short_name.replace(' (new)', '')}</b>: about {r.properties.trips_per_weekday ?? '?'} trips a weekday on an existing corridor.</li>{/each}
+          <li>Nothing else changes, so any difference comes from these routes alone.</li>
+        {/if}
       {:else}
         <li>Add service where step A says trips fail, and change nothing else.</li>
         <li><em>Not done yet: the redesign will be drawn from these real failures.</em></li>
@@ -81,10 +89,10 @@
 
 {#if ready && after && beforeGeo && comparison}
   <h3 use:reveal data-reveal>What the new map would look like</h3>
-  {#if RedesignMap}<RedesignMap before={beforeGeo} {after} />{:else}<div class="card mapwait">Loading the map…</div>{/if}
+  {#if RedesignMap}<RedesignMap before={beforeGeo} {after} highlight={changed} />{:else}<div class="card mapwait">Loading the map…</div>{/if}
 
   <h3 use:reveal data-reveal>Who it helps, and by how much</h3>
-  <Redesign {comparison} />
+  <Redesign {comparison} {spec} />
 {:else}
   <div class="later">
     <Pending title="The before-and-after will appear here">
