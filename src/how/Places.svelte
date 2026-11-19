@@ -1,9 +1,10 @@
 <script lang="ts">
   import * as maplibregl from 'maplibre-gl';
+  import 'maplibre-gl/dist/maplibre-gl.css';
   import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
   import { onMount } from 'svelte';
   import { reveal } from '../lib/actions';
-  import { GROUP_COLOR, GROUP_LABEL } from '../lib/format';
+  import { GROUP_COLOR, GROUP_LABEL, label } from '../lib/format';
   import { reducedMotion } from '../lib/curves';
   import { prep, sliceTo } from '../lib/routeAnim';
   import { rng, weighted } from '../lib/rng';
@@ -15,26 +16,43 @@
   const BASEMAP = 'https://tiles.openfreemap.org/styles/positron';
   const BOUNDS: [number, number, number, number] = [-83.8, 42.225, -83.665, 42.325];
   const GROUPS = ['undergraduate', 'graduate', 'university_staff', 'resident_worker', 'shift_worker', 'retired'];
-  const SHARES = [0.2, 0.1, 0.1, 0.3, 0.15, 0.15];
+  const FALLBACK = [0.2, 0.1, 0.1, 0.3, 0.15, 0.15];
   const SPAWN_MS = 1600; // a new person every 1.6 s
-  const isUni = (w: Inputs['workplaces'][number]) => w.is_university === true || w.is_university === 'true';
 
-  // Road paths between every home and destination, precomputed by scripts/road-paths.mjs.
-  let paths: Record<string, { m: number; c: number[][] }> = {};
+  // Same rules as the generator: homes weighted by housing units, destinations by jobs or building size.
+  // Students live in dorms or rentals; staff go to university jobs, shift workers to shift jobs,
+  // resident workers to other daytime jobs, and retired residents have no fixed destination.
+  const shares = $derived(GROUPS.map((g, i) => inputs.group_shares?.[g] ?? FALLBACK[i]));
+  const W_COL: Record<string, 3 | 4 | 5> = { resident_worker: 3, shift_worker: 4, university_staff: 5 };
 
-  // Same rules as the generator: homes weighted by units, destinations by jobs or class capacity.
   function pickTrip(r: () => number, gi: number) {
     const g = GROUPS[gi];
     const student = gi <= 1;
-    const homes = inputs.housing.filter((h) => (student ? h.tenure === 'dorm' || h.tenure === 'rent' : h.tenure !== 'dorm'));
-    const home = homes[weighted(r, homes.map((h) => h.units))];
-    let to: { id: string; lat: number; lon: number; name: string } | null = null;
-    if (student) { const c = inputs.campus[weighted(r, inputs.campus.map((c) => c.capacity_weight))]; to = { id: c.campus_id, ...c }; }
-    else if (g !== 'retired') {
-      const pool = inputs.workplaces.filter((w) => (g === 'university_staff' ? isUni(w) : g === 'shift_worker' ? w.shift_pattern !== 'standard_day' : !isUni(w) && w.shift_pattern === 'standard_day'));
-      if (pool.length) { const w = pool[weighted(r, pool.map((w) => w.jobs))]; to = { id: w.workplace_id, ...w }; }
+    const home = inputs.homes[weighted(r, inputs.homes.map((h) => (student ? h[2] : h[3])))];
+    let to: { lon: number; lat: number; name: string } | null = null;
+    if (student) {
+      const c = inputs.campus[weighted(r, inputs.campus.map((c) => c[2]))];
+      to = { lon: c[0], lat: c[1], name: c[3] || 'a campus building' };
+    } else if (W_COL[g]) {
+      const col = W_COL[g];
+      const w = inputs.work[weighted(r, inputs.work.map((w) => w[col]))];
+      to = { lon: w[0], lat: w[1], name: w[6] || (col === 5 ? 'a university workplace' : 'a workplace') };
     }
     return { home, to };
+  }
+
+  /** A gentle arc from a to b, so overlapping trips stay distinguishable. Straight-line distance in metres. */
+  function arc(a: number[], b: number[]) {
+    const k = Math.cos((a[1] * Math.PI) / 180);
+    const dx = (b[0] - a[0]) * k, dy = b[1] - a[1];
+    const m = Math.hypot(dx, dy) * 111_320;
+    const c = [(a[0] + b[0]) / 2 - (dy * 0.18) / k, (a[1] + b[1]) / 2 + dx * 0.18];
+    const pts: number[][] = [];
+    for (let i = 0; i <= 24; i++) {
+      const t = i / 24, u = 1 - t;
+      pts.push([u * u * a[0] + 2 * u * t * c[0] + t * t * b[0], u * u * a[1] + 2 * u * t * c[1] + t * t * b[1]]);
+    }
+    return { pts, m };
   }
 
   type Live = { g: string; line: ReturnType<typeof prep> | null; home: number[]; t0: number; dur: number };
@@ -44,6 +62,18 @@
   let last = $state('');
   let el: HTMLDivElement;
 
+  /** Point features with a radius `r` (px) scaled by the square root of the weight, relative to the layer's largest. */
+  function sized(rows: { lon: number; lat: number; w: number }[], rMin: number, rMax: number) {
+    const max = Math.max(1, ...rows.map((x) => x.w));
+    return {
+      type: 'FeatureCollection',
+      features: rows
+        .sort((a, b) => b.w - a.w) // big circles underneath small ones
+        .map((x) => ({ type: 'Feature', properties: { r: rMin + (rMax - rMin) * Math.sqrt(x.w / max) }, geometry: { type: 'Point', coordinates: [x.lon, x.lat] } })),
+    } as any;
+  }
+  const zoomR: any = ['interpolate', ['linear'], ['zoom'], 11, ['*', 0.75, ['get', 'r']], 14, ['get', 'r'], 16, ['*', 1.6, ['get', 'r']]];
+
   onMount(() => {
     const map = new maplibregl.Map({ container: el, style: BASEMAP, bounds: BOUNDS, fitBoundsOptions: { padding: 16 }, attributionControl: { compact: true }, cooperativeGestures: true });
     map.addControl(new maplibregl.NavigationControl({ showCompass: false }), 'top-right');
@@ -52,16 +82,16 @@
     const fc = (features: any[]) => ({ type: 'FeatureCollection', features }) as any;
 
     function spawn() {
-      const gi = weighted(r, SHARES);
+      const gi = weighted(r, shares);
       const { home, to } = pickTrip(r, gi);
-      const p = to ? paths[`${home.housing_id}>${to.id}`] : undefined;
-      const coords = p?.c ?? (to ? [[home.lon, home.lat], [to.lon, to.lat]] : null);
+      const from = [home[0], home[1]];
+      const a = to ? arc(from, [to.lon, to.lat]) : null;
       // longer trips take longer on screen, within limits
-      const dur = p ? Math.min(5200, Math.max(2200, p.m / 2.2)) : 2400;
-      live.push({ g: GROUPS[gi], line: coords ? prep(coords) : null, home: [home.lon, home.lat], t0: performance.now(), dur });
+      const dur = a ? Math.min(5200, Math.max(2200, (a.m * 1.3) / 2.2)) : 2400;
+      live.push({ g: GROUPS[gi], line: a ? prep(a.pts) : null, home: from, t0: performance.now(), dur });
       counts[gi]++;
-      const where = home.neighborhood.replace(/_/g, ' ');
-      last = `${GROUP_LABEL[GROUPS[gi]].replace(/s$/, '')} · home in ${where}${to ? ` → ${to.name}${p ? ` · ${(p.m / 1609).toFixed(1)} mi by road` : ''}` : ' · stays local, no fixed destination'}`;
+      const where = label(home[4]);
+      last = `${GROUP_LABEL[GROUPS[gi]].replace(/s$/, '')} · home in ${where}${to ? ` → ${to.name}${a ? ` · ${(a.m / 1609).toFixed(1)} mi as the crow flies` : ''}` : ' · stays local, no fixed destination'}`;
     }
 
     function frame(now: number) {
@@ -98,23 +128,17 @@
     const io = new IntersectionObserver(([e]) => { visible = e.isIntersecting; if (visible) start(); else stop(); }, { threshold: 0.3 });
     io.observe(el);
 
-    Promise.all([
-      fetch(`${import.meta.env.BASE_URL}how/ann_arbor_paths.json`).then((x) => x.json()).catch(() => ({})),
-      new Promise((res) => map.on('load', res)),
-    ]).then(([p]) => {
-      paths = p as typeof paths;
-      const firstLabel = map.getStyle().layers.find((l) => l.type === 'symbol')?.id;
-      const pt = (rows: { lon: number; lat: number }[], w: (x: any) => number) => fc(rows.map((x) => ({ type: 'Feature', properties: { w: w(x) }, geometry: { type: 'Point', coordinates: [x.lon, x.lat] } })));
+    map.on('load', () => {
       map.addSource('pl-trails', { type: 'geojson', data: fc([]) });
       map.addSource('pl-heads', { type: 'geojson', data: fc([]) });
       map.addSource('pl-pulse', { type: 'geojson', data: fc([]) });
-      map.addSource('pl-homes', { type: 'geojson', data: pt(inputs.housing, (h) => h.units) });
-      map.addSource('pl-work', { type: 'geojson', data: pt(inputs.workplaces, (w) => w.jobs) });
-      map.addSource('pl-campus', { type: 'geojson', data: pt(inputs.campus, (c) => c.capacity_weight) });
-      map.addLayer({ id: 'pl-trails', type: 'line', source: 'pl-trails', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'c'], 'line-opacity': ['get', 'o'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3.5, 15, 7] } }, firstLabel);
-      map.addLayer({ id: 'pl-homes', type: 'circle', source: 'pl-homes', paint: { 'circle-radius': ['+', 4, ['/', ['sqrt', ['get', 'w']], 4]], 'circle-color': '#ffffff', 'circle-stroke-color': '#00274C', 'circle-stroke-width': 2 } });
-      map.addLayer({ id: 'pl-work', type: 'circle', source: 'pl-work', paint: { 'circle-radius': ['+', 3, ['/', ['sqrt', ['get', 'w']], 12]], 'circle-color': '#00274C', 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 } });
-      map.addLayer({ id: 'pl-campus', type: 'circle', source: 'pl-campus', paint: { 'circle-radius': ['+', 4, ['*', 0.9, ['sqrt', ['get', 'w']]]], 'circle-color': '#FFCB05', 'circle-stroke-color': '#00274C', 'circle-stroke-width': 2 } });
+      map.addSource('pl-homes', { type: 'geojson', data: sized(inputs.homes.map((h) => ({ lon: h[0], lat: h[1], w: Math.max(h[2], h[3]) })), 1.5, 8) });
+      map.addSource('pl-work', { type: 'geojson', data: sized(inputs.work.map((w) => ({ lon: w[0], lat: w[1], w: w[2] })), 1.5, 8) });
+      map.addSource('pl-campus', { type: 'geojson', data: sized(inputs.campus.map((c) => ({ lon: c[0], lat: c[1], w: c[2] })), 2, 9) });
+      map.addLayer({ id: 'pl-work', type: 'circle', source: 'pl-work', paint: { 'circle-radius': zoomR, 'circle-color': '#00274C', 'circle-opacity': 0.55, 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 0.8 } });
+      map.addLayer({ id: 'pl-homes', type: 'circle', source: 'pl-homes', paint: { 'circle-radius': zoomR, 'circle-color': '#ffffff', 'circle-opacity': 0.85, 'circle-stroke-color': '#00274C', 'circle-stroke-width': 1.2 } });
+      map.addLayer({ id: 'pl-campus', type: 'circle', source: 'pl-campus', paint: { 'circle-radius': zoomR, 'circle-color': '#FFCB05', 'circle-opacity': 0.85, 'circle-stroke-color': '#00274C', 'circle-stroke-width': 1 } });
+      map.addLayer({ id: 'pl-trails', type: 'line', source: 'pl-trails', layout: { 'line-cap': 'round', 'line-join': 'round' }, paint: { 'line-color': ['get', 'c'], 'line-opacity': ['get', 'o'], 'line-width': ['interpolate', ['linear'], ['zoom'], 11, 3, 15, 6] } });
       map.addLayer({ id: 'pl-pulse', type: 'circle', source: 'pl-pulse', paint: { 'circle-radius': ['get', 'r'], 'circle-color': ['get', 'c'], 'circle-opacity': ['*', 0.35, ['get', 'o']], 'circle-stroke-color': ['get', 'c'], 'circle-stroke-width': 2, 'circle-stroke-opacity': ['get', 'o'] } });
       map.addLayer({ id: 'pl-heads', type: 'circle', source: 'pl-heads', paint: { 'circle-radius': 6.5, 'circle-color': ['get', 'c'], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 2.5 } });
       loaded = true;
@@ -128,14 +152,19 @@
   <div class="map" bind:this={el}></div>
   <p class="last" aria-live="off">{last || ' '}</p>
   <div class="keys">
-    <span><i class="k-home"></i>Housing (size = units)</span>
-    <span><i class="k-work"></i>Workplace (size = jobs)</span>
-    <span><i class="k-campus"></i>Campus building</span>
+    <span><i class="k-home"></i>Homes (bigger = more housing units)</span>
+    <span><i class="k-work"></i>Workplaces (bigger = more jobs)</span>
+    <span><i class="k-campus"></i>Campus buildings (bigger = larger building)</span>
   </div>
+  <p class="tl">People placed so far in this animation (one every couple of seconds while the map is on screen):</p>
   <ul class="tally">
     {#each GROUPS as g, gi}<li><i style="background:{GROUP_COLOR[g]}"></i>{GROUP_LABEL[g]} <b>{counts[gi]}</b></li>{/each}
   </ul>
-  <p class="src">Paths follow real streets (OpenStreetMap, routed with OSRM). Home and job locations are sample data.</p>
+  <p class="src">
+    Homes: 2020 Census housing counts for each city block. Jobs: the Census Bureau’s count of jobs on each block (LEHD/LODES).
+    Campus buildings: OpenStreetMap. The lines are drawn as simple arcs from home to destination; the simulation itself routes every
+    trip along real streets and bus lines. These inputs are still being checked, so treat them as preliminary.
+  </p>
 </div>
 
 <style>
@@ -145,9 +174,10 @@
   .keys { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12.5px; color: var(--muted); }
   .keys i { display: inline-block; width: 11px; height: 11px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
   .k-home { border: 2px solid var(--blue); background: #fff; }
-  .k-work { background: var(--blue); }
+  .k-work { background: var(--blue); opacity: 0.7; }
   .k-campus { background: var(--maize); border: 2px solid var(--blue); }
-  .tally { list-style: none; padding: 0; margin: 12px 0 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; }
+  .tl { margin: 12px 0 0; font-size: 12.5px; color: var(--muted); }
+  .tally { list-style: none; padding: 0; margin: 4px 0 0; display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; }
   .tally i { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
   .tally b { font-variant-numeric: tabular-nums; margin-left: 2px; }
   .src { margin: 10px 0 0; font-size: 12px; color: var(--muted); }
