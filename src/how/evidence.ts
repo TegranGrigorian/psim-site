@@ -200,3 +200,25 @@ export function verdicts(aa: GroupMetrics, mad: GroupMetrics | undefined, comp: 
   }
   return out;
 }
+
+/**
+ * H7, which the project report doesn't test: are students on time for class at least RELIABLE% of the time?
+ * One-sided test of each student group's on-time rate against the bar, combined like the report combines tests.
+ * Verdict words match the report's (supported / contradicted / inconclusive / mixed). Null until on_time_rate exists.
+ */
+export function h7(gm: GroupMetrics, bar = RELIABLE): { verdict: string; summary: string } | null {
+  const who = [['undergraduate', 'undergraduates'], ['graduate', 'graduate students']] as const;
+  const ivs = who.map(([k, name], i) => ({ name, iv: onTime(gm, k), seed: 71 + i }));
+  if (!ivs.every((x) => x.iv)) return null;
+  const res = ivs.map(({ name, iv, seed }) => {
+    const t = oneSampleT(runs(iv!, seed, false, nRuns(gm)).map((x) => x * 100), bar);
+    const v = t.m > bar && t.pAbove < 0.05 ? 'supported' : t.m < bar && t.pBelow < 0.05 ? 'contradicted' : 'inconclusive';
+    return { name, m: iv!.mean * 100, v };
+  });
+  const vs = new Set(res.map((r) => r.v));
+  const verdict = vs.size === 1 ? res[0].v : vs.has('supported') && vs.has('contradicted') ? 'mixed' : vs.has('supported') ? 'partly supported' : 'partly contradicted';
+  return {
+    verdict,
+    summary: `With five minutes to spare, ${res.map((r) => `${r.name} reach class on ${r.m.toFixed(1)}% of trips`).join(' and ')}, against a bar of ${bar}% set in advance.`,
+  };
+}

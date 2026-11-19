@@ -7,8 +7,11 @@
   import { mean, normalPdf, pairedT, sd, texP } from '../lib/stats';
   import Tex from './Tex.svelte';
   import type { Test } from './evidence';
+  import type { ReportTest } from '../lib/types';
+  import { verdictLabel } from '../lib/report';
 
-  let { tests }: { tests: Test[] } = $props();
+  // reportTests: the project report's verdict on the same comparison (keyed by test key), where it has one
+  let { tests, reportTests = {} }: { tests: Test[]; reportTests?: Record<string, ReportTest | undefined> } = $props();
 
   const STEPS = ['What fair looks like', 'What we found', 'How far from fair?', 'Could it be luck?', 'Verdict'];
   let sel = $state(0);
@@ -26,6 +29,8 @@
   const reversed = $derived(T.expect !== 0 && Math.sign(r.dbar) !== T.expect);
   const nTowns = $derived(T.a.runs.length);
   const units = $derived(T.unit === '%' ? 'points' : 'minutes');
+  const rep = $derived(reportTests[T.key]);
+  const ours = $derived(significant ? (reversed ? 'contradicted' : 'supported') : 'inconclusive');
 
   // group A's curve starts on top of B ("fair") and slides to where the simulation put it
   const posA = new Tween(0, { duration: 1100, easing: cubicInOut });
@@ -171,12 +176,22 @@
           <b>{significant && reversed ? 'Real, but the other way round' : significant && meaningful ? 'Real and large' : significant ? 'Real but small' : 'No detectable difference'}</b>
           <p>
             {#if significant && reversed}The gap is unlikely to be luck (p {r.p < 0.001 ? '< 0.001' : `= ${r.p.toFixed(3)}`}), but it runs the opposite way to the prediction: {T.a.label.toLowerCase()} come out <b>better</b> than {T.b.label.toLowerCase()}, by {Math.abs(r.dbar).toFixed(1)} {units}. This counts against {T.hyp}.
-            {:else if significant && meaningful}The gap is {tAbs > 1000 ? 'more than 1,000' : Math.round(tAbs)} standard errors from fair (p {r.p < 0.001 ? '< 0.001' : `= ${r.p.toFixed(3)}`}) and bigger than the {T.meaningful} {units} we decided in advance would matter to a rider. We reject “fair.”{#if T.expect}{" "}This supports {T.hyp}.{/if}
+            {:else if significant && meaningful}The gap is {tAbs > 1000 ? 'more than 1,000' : Math.round(tAbs)} standard errors from fair (p {r.p < 0.001 ? '< 0.001' : `= ${r.p.toFixed(3)}`}) and bigger than the {T.meaningful} {units} we decided in advance would matter to a rider. We reject “fair.”{#if T.expect}{" "}This comparison supports {T.hyp}.{/if}
             {:else if significant}The gap is unlikely to be luck, but at {Math.abs(r.dbar).toFixed(1)} {units} it is below the {T.meaningful} we said would matter. Statistically real, practically minor.
             {:else}A gap of {Math.abs(r.dbar).toFixed(1)} {units} sits well inside what luck produces (p = {r.p.toFixed(2)}). We can’t say these two differ. That isn’t proof they are equal, just no evidence they aren’t.{/if}
           </p>
           <Tex tex={`\\text{effect size: } d = \\bar d / s_d = ${r.cohen.toFixed(1)}`} />
         </div>
+        {#if rep}
+          <p class="rep">
+            {#if rep.verdict === ours}
+              The project’s report, which works from every run’s actual results, agrees: <b>{verdictLabel(rep.verdict)}</b> ({rep.difference}; {rep.replicates}).
+            {:else}
+              The project’s report, which works from every run’s actual results, rates this comparison <b>{verdictLabel(rep.verdict)}</b> ({rep.difference}).
+              Go by the report: this page re-creates the runs from the summary averages, which is only approximate.
+            {/if}
+          </p>
+        {/if}
       {/if}
     </div>
   {/key}
@@ -238,6 +253,7 @@
   .verdict.yes { background: #e5f3ea; border-color: #0a6b45; }
   .verdict.meh { background: var(--maize-soft); border-color: var(--maize); }
   .verdict b { font-family: var(--serif); font-size: 22px; }
+  .rep { margin-top: 10px !important; font-size: 14px !important; color: var(--muted) !important; }
   .nav { display: flex; justify-content: space-between; gap: 8px; margin-top: 14px; }
   .nav button { border: 1px solid var(--rule); background: #fff; border-radius: 999px; padding: 8px 16px; font-size: 14px; font-weight: 500; }
   .nav button:disabled { opacity: 0.4; cursor: default; }

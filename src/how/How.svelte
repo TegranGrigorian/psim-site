@@ -14,15 +14,16 @@
   import Glossary from './Glossary.svelte';
   import WhySim from './WhySim.svelte';
   import HypothesisTest from './HypothesisTest.svelte';
-  import Verdicts from './Verdicts.svelte';
+  import HypothesisCards from '../components/HypothesisCards.svelte';
   import OnTime from './OnTime.svelte';
   import FixIt from './FixIt.svelte';
   import type PlacesComponent from './Places.svelte';
   import type RedesignMapComponent from './RedesignMap.svelte';
-  import { tests, verdicts } from './evidence';
+  import { h7, tests } from './evidence';
+  import { cityShort } from '../lib/report';
   import { nearView, reveal } from '../lib/actions';
-  import { hasScenario, loadComparison, loadCore, loadGeo, loadIndex, loadInputs } from '../lib/data';
-  import type { Bundle, Comparison, Core, Geo, Index } from '../lib/types';
+  import { hasScenario, loadComparison, loadCore, loadGeo, loadIndex, loadInputs, loadMeta, loadReport, loadScenarioSpec } from '../lib/data';
+  import type { Bundle, CityMeta, Comparison, Core, Geo, Index, Report, ScenarioSpec } from '../lib/types';
   import type { Inputs } from './inputs';
 
   // Only the small baseline summaries load up front. The step 2 map (MapLibre plus the input
@@ -33,6 +34,9 @@
   let baseGeo = $state<Geo>();
   let redesign = $state<Bundle>();
   let comparison = $state<Comparison | null>();
+  let spec = $state<ScenarioSpec | null>();
+  let report = $state<Report | null>();
+  let meta = $state<CityMeta | null>();
   let inputs = $state<Inputs>();
   let Places = $state<typeof PlacesComponent>();
   let RedesignMap = $state<typeof RedesignMapComponent>();
@@ -70,8 +74,8 @@
   $effect(() => {
     // the redesign files (including both scenarios' route maps) only matter once step 12 is near
     if (!fixWanted || !hasRedesign || redesign) return;
-    Promise.all([loadCore('ann_arbor', 'redesign_v1'), loadGeo('ann_arbor', 'redesign_v1'), loadGeo('ann_arbor', 'baseline'), loadComparison('ann_arbor', 'redesign_v1'), import('./RedesignMap.svelte')])
-      .then(([c, g, bg, cmp, m]) => { baseGeo = bg; comparison = cmp; RedesignMap = m.default; redesign = { ...c, ...g }; })
+    Promise.all([loadCore('ann_arbor', 'redesign_v1'), loadGeo('ann_arbor', 'redesign_v1'), loadGeo('ann_arbor', 'baseline'), loadComparison('ann_arbor', 'redesign_v1'), loadScenarioSpec('ann_arbor', 'redesign_v1'), import('./RedesignMap.svelte')])
+      .then(([c, g, bg, cmp, sp, m]) => { baseGeo = bg; comparison = cmp; spec = sp; RedesignMap = m.default; redesign = { ...c, ...g }; })
       .catch((e) => (error = `Step 12: ${e}`));
   });
   $effect(() => {
@@ -81,6 +85,8 @@
   onMount(() => {
     loadCore('ann_arbor', 'baseline').then((c) => (core = c)).catch((e) => (error = String(e)));
     loadIndex().then((i) => (index = i)).catch((e) => (error = String(e)));
+    loadReport().then((r) => (report = r));
+    loadMeta('ann_arbor').then((m) => (meta = m));
 
     const onScroll = () => {
       const h = document.documentElement;
@@ -96,7 +102,41 @@
   });
 
   const theTests = $derived(core ? tests(core.groupMetrics) : []);
-  const vs = $derived(core ? verdicts(core.groupMetrics, madison?.groupMetrics, comparison) : []);
+  const nRep = $derived(core?.groupMetrics.n_replicates);
+
+  // Step 11: the report's verdicts (H1-H6), plus H7, which only this page tests, per city.
+  const CLAIMS: [string, string][] = [
+    ['H1', 'Undergraduates have shorter trips and fewer failures than resident workers, for equal distances.'],
+    ['H2', 'Shift workers have the highest failure rate, driven by evening and night service.'],
+    ['H3', 'University staff sit closer to students than to other residents.'],
+    ['H4', 'Differences between neighborhoods are as large as differences between groups.'],
+    ['H5', 'The comparison city shows a different gap, so Ann Arbor’s is not inevitable.'],
+    ['H6', 'A targeted redesign helps the worst-served without hurting others.'],
+    ['H7', 'Students can rely on the buses to get them to class on time.'],
+  ];
+  const h7rows = $derived(
+    [['Ann Arbor', core], ['Madison', madison]].flatMap(([city, c]) => {
+      const r = c ? h7((c as Core).groupMetrics) : null;
+      return r ? [{ city: city as string, ...r, note: 'Worked out on this page from the summary files; the project report doesn’t test H7.' }] : [];
+    }),
+  );
+  const SAY: Record<string, string> = {
+    supported: 'held up', 'partly supported': 'partly held up', mixed: 'gave mixed results', 'partly contradicted': 'was partly contradicted',
+    contradicted: 'did not hold up', inconclusive: 'can’t be decided yet', 'no data': 'is still waiting for data',
+  };
+  const say = (v: string) => SAY[v] ?? (v.startsWith('contradicted') ? 'did not hold up' : v);
+  const soWhat = $derived(CLAIMS.map(([id, claim]) => {
+    const rs = [...(report?.hypotheses ?? []).filter((h) => h.id === id).map((h) => ({ city: cityShort(h.city), verdict: h.verdict })), ...(id === 'H7' ? h7rows : [])];
+    return { id, claim, text: rs.map((r) => `${say(r.verdict)} ${r.city === 'Both cities' ? 'across the two cities' : `in ${r.city}`}`).join(', ') };
+  }).filter((x) => x.text));
+  // Step 9: the report's verdict on the same comparison, where it has one
+  const reportTests = $derived.by(() => {
+    const aa = (id: string) => report?.hypotheses.find((h) => h.id === id && /^Ann Arbor/.test(h.city) && !/\bvs\b/.test(h.city));
+    return {
+      h2: aa('H2')?.tests.find((t) => t.metric === 'failure_rate' && /undergrad/.test(t.test)),
+      h1: aa('H1')?.tests.find((t) => t.metric === 'total_minutes'),
+    };
+  });
 </script>
 
 <div class="bar" style="transform:scaleX({progress})"></div>
@@ -253,6 +293,7 @@
         <p>
           One town of 1,000 people could be lucky or unlucky. So the whole thing is repeated <b>100 times</b>, each with a new seed
           (42, 43, 44 … 141), giving 100 slightly different towns.
+          {#if nRep && nRep < 100}The results on this site so far come from the first {nRep}{#if meta?.seeds}{' '}(seeds {meta.seeds[0]} to {meta.seeds[1]}){/if}; the rest are still to run.{/if}
         </p>
         <p>
           Each run gives an answer, for example “shift workers failed 26% of trips.” Stacked up, the answers form a pile. The
@@ -316,7 +357,7 @@
         </p>
       </div>
       {#if theTests.length}
-        <HypothesisTest tests={theTests} />
+        <HypothesisTest tests={theTests} {reportTests} />
       {:else if core}
         <Pending>The summary files don’t yet have the numbers this test needs. It will appear after the next simulation run.</Pending>
       {:else}<div class="card wait" style="height:560px">{error ? 'The summary file could not be loaded.' : 'Loading…'}</div>{/if}
@@ -334,7 +375,7 @@
           (you can move the bar to see how much the answer depends on it).
         </p>
       </div>
-      {#if core}<OnTime metrics={core.groupMetrics} />{/if}
+      {#if core}<OnTime metrics={core.groupMetrics} onTimeShare={meta?.on_time_share ?? null} />{/if}
     </div>
   </section>
 
@@ -344,18 +385,19 @@
         <p class="num">Step 11</p>
         <h2>What we’d know</h2>
         <p class="lede">
-          Each hypothesis from the top of the page, with the evidence and the test behind its verdict. These verdicts are worked out
-          automatically from the summary files, so they update themselves after every simulation run. The current run is
-          preliminary (fewer runs than planned, and input data still being checked), so read these as a first look, not a conclusion.
+          Each hypothesis from the top of the page, with its verdict and the numbers behind it. Hypotheses 1 to 6 are judged by the
+          project’s report, which compares every simulation run’s results; hypothesis 7 is worked out on this page. They update
+          after every simulation run. These runs are preliminary (fewer than planned, and input data still being checked), so read
+          them as a first look, not a conclusion.
         </p>
       </div>
       {#if core}
-        <Verdicts verdicts={vs} nRep={core.groupMetrics.n_replicates} preliminary={!!index?.fake} />
+        <HypothesisCards claims={CLAIMS} {report} extra={{ H7: h7rows }} />
         <div class="meaning" use:reveal data-reveal>
           <p class="num">So what?</p>
           <ul>
-            {#each vs as v}
-              <li><b>{v.id}</b> {v.status === 'Supported' ? 'held up' : v.status === 'Mixed' ? 'partly held up' : v.status === 'Pending' ? 'is still waiting for data' : 'did not hold up'}: {v.claim.charAt(0).toLowerCase() + v.claim.slice(1)}</li>
+            {#each soWhat as v}
+              <li><b>{v.id}</b> {v.text}: {v.claim.charAt(0).toLowerCase() + v.claim.slice(1)}</li>
             {/each}
           </ul>
           <div class="todo">
@@ -378,7 +420,7 @@
         </p>
       </div>
       <div use:nearView={() => (fixWanted = true)}>
-        {#if core}<FixIt before={core} beforeGeo={baseGeo} after={redesign} {comparison} {RedesignMap} />{/if}
+        {#if core}<FixIt before={core} beforeGeo={baseGeo} after={redesign} {comparison} {spec} {RedesignMap} />{/if}
       </div>
     </div>
   </section>
