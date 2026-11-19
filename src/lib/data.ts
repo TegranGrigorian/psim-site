@@ -1,4 +1,4 @@
-import type { Comparison, Core, Geo, Index } from './types';
+import type { CityMeta, Comparison, Core, Geo, Index, Report, ScenarioSpec } from './types';
 
 const base = `${import.meta.env.BASE_URL}data`;
 
@@ -44,3 +44,9 @@ export async function loadComparison(city: string, scenario: string): Promise<Co
 }
 
 export const loadInputs = <T>(city: string) => get<T>(`${city}/inputs.json`);
+
+/** null when the file is missing: these are optional extras. */
+const optional = <T>(path: string) => get<T>(path).catch(() => null);
+export const loadReport = () => optional<Report>('hypotheses.json');
+export const loadMeta = (city: string) => optional<CityMeta>(`${city}/meta.json`);
+export const loadScenarioSpec = (city: string, scenario: string) => optional<ScenarioSpec>(`${city}/${scenario}/scenario.json`);

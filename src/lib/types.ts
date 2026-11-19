@@ -64,6 +64,7 @@ export interface Delta { before: number; after: number; delta: number; ci_low: n
 export interface Comparison {
   from_scenario: string;
   to_scenario: string;
+  n_paired_replicates?: number;
   groups: {
     dimension: Dimension;
     value: string;
@@ -85,3 +86,19 @@ export interface Geo {
   routes: Routes;
 }
 export type Bundle = Core & Geo;
+
+/** data/<city>/meta.json, written by sync-data.mjs from the city's config and baseline replicates. */
+export interface CityMeta { population_size: number | null; seeds: [number, number] | null; on_time_share: number | null }
+
+/** A scenario's description (data/<city>/<scenario>.json) plus weekday trips per changed route. */
+export interface ScenarioSpec {
+  description?: string;
+  target_tract?: string;
+  feeds?: Record<string, { op: string; route: string | number; until?: string; from?: string; to?: string; factor?: number }[]>;
+  routes?: { route: string; trips_before: number | null; trips_after: number | null }[];
+}
+
+/** data/report/hypotheses.json, written by `psim-engine report`. */
+export interface ReportTest { test: string; metric: string; difference: string; replicates: string; verdict: string }
+export interface ReportEntry { id: string; city: string; claim: string; verdict: string; tests: ReportTest[] }
+export interface Report { verdict_rule: string; n_replicates: Record<string, number>; preliminary?: boolean; hypotheses: ReportEntry[] }

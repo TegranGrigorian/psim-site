@@ -68,12 +68,39 @@ function inputs(dir) {
   };
 }
 
+const readJson = (path) => { try { return JSON.parse(readFileSync(path, 'utf8')); } catch { return null; } };
+const routeTrips = (path) => Object.fromEntries((readJson(path)?.features ?? []).map((f) => [f.properties.route_id, f.properties.trips_per_weekday ?? null]));
+
 for (const city of index.cities ?? []) {
   const sums = join(src, city.slug, 'summaries');
   for (const scenario of city.scenarios ?? []) {
     const from = join(sums, scenario);
     if (!existsSync(from)) { console.warn(`index lists ${city.slug}/${scenario} but ${from} is missing`); continue; }
-    cpSync(from, join(dst, city.slug, scenario), { recursive: true });
+    // replicates.csv (per-replicate values) is for the report, not the site: leave it out of the build
+    cpSync(from, join(dst, city.slug, scenario), { recursive: true, filter: (f) => !f.endsWith('replicates.csv') });
+    // A scenario's description (data/<city>/<scenario>.json), plus weekday trips per changed route, for the redesign section.
+    const spec = scenario !== 'baseline' ? readJson(join(src, city.slug, `${scenario}.json`)) : null;
+    if (spec) {
+      const before = routeTrips(join(sums, 'baseline', 'routes.geojson')), after = routeTrips(join(from, 'routes.geojson'));
+      const routes = [...new Set(Object.values(spec.feeds ?? {}).flat().map((op) => String(op.route)))]
+        .map((route) => ({ route, trips_before: before[route] ?? null, trips_after: after[route] ?? null }));
+      writeFileSync(join(dst, city.slug, scenario, 'scenario.json'), JSON.stringify({ ...spec, routes }));
+    }
+  }
+  // Facts the Method section states: people per run and which seeds the baseline runs used.
+  const cfg = readJson(join(src, city.slug, 'config.json'));
+  const reps = join(sums, 'baseline', 'replicates.csv');
+  let seeds = null;
+  if (existsSync(reps)) {
+    const col = readFileSync(reps, 'utf8').trim().split('\n').slice(1).map((r) => +r.split(',')[0]).filter(Number.isFinite);
+    if (col.length) seeds = [Math.min(...col), Math.max(...col)];
+  }
+  if (existsSync(join(dst, city.slug))) {
+    writeFileSync(join(dst, city.slug, 'meta.json'), JSON.stringify({
+      population_size: cfg?.population_size ?? null,
+      seeds,
+      on_time_share: cfg?.reliability?.on_time_share ?? null,
+    }));
   }
   const inp = inputs(join(src, city.slug));
   if (inp) {
@@ -81,4 +108,7 @@ for (const city of index.cities ?? []) {
     writeFileSync(join(dst, city.slug, 'inputs.json'), JSON.stringify(inp));
   }
 }
+// Hypothesis verdicts written by `psim-engine report` (optional).
+const report = join(src, 'report', 'hypotheses.json');
+if (existsSync(report)) cpSync(report, join(dst, 'hypotheses.json'));
 console.log('synced summaries ->', dst);
