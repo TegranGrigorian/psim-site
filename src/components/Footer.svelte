@@ -47,7 +47,7 @@
     </div>
   </div>
   <div class="wrap fine">
-    <p>Who Is the Bus For? · HISTART 394 · University of Michigan · <a href="./how.html">How it works</a> · <a href="./docs.html">Docs</a></p>
+    <p>Who Is the Bus For? · HISTART 394 · University of Michigan · <a href="./how.html">How it works</a></p>
     <p>The simulation code and analysis are the author’s own work. This website was built with an agentic AI assistant, as disclosed in the project’s AI policy.</p>
   </div>
 </footer>
