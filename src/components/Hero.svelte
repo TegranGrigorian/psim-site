@@ -1,20 +1,14 @@
 <script lang="ts">
   import { countUp } from '../lib/actions';
-  import type { Bundle } from '../lib/types';
+  import { heroStats } from '../lib/heroStats';
+  import type { GroupMetrics } from '../lib/types';
   import { onMount } from 'svelte';
   import { reducedMotion, smoothPath, type Pt } from '../lib/curves';
 
-  let { bundle, cityName }: { bundle: Bundle; cityName: string } = $props();
+  // The hero draws straight away; the three numbers fill in once group_metrics.json arrives.
+  let { metrics, cityName }: { metrics?: GroupMetrics; cityName: string } = $props();
 
-  const g = (v: string) => bundle.groupMetrics.groups.find((x) => x.dimension === 'group' && x.value === v)!.metrics;
-  const stats = $derived.by(() => {
-    const hoods = bundle.hoods.features.map((f) => f.properties.metrics.failure_rate.mean);
-    return [
-      { to: g('shift_worker').failure_rate.mean / g('undergraduate').failure_rate.mean, digits: 1, suffix: '×', text: `Shift workers fail to complete a trip ${(g('shift_worker').failure_rate.mean / g('undergraduate').failure_rate.mean).toFixed(1)}× as often as undergraduates.` },
-      { to: g('resident_worker').total_minutes.mean - g('undergraduate').total_minutes.mean, digits: 0, suffix: ' min', text: 'Extra door-to-door time for a resident worker compared with an undergraduate.' },
-      { to: Math.max(...hoods) / Math.min(...hoods), digits: 1, suffix: '×', text: 'Spread in failure rate between the best and worst served neighborhoods.' },
-    ];
-  });
+  const stats = $derived(metrics ? heroStats(metrics) : []);
 
   // Three "routes" through control points that drift on slow sine waves. Stops sit at fixed
   // fractions of each line; buses loop along them. Everything is recomputed per frame.
@@ -101,13 +95,19 @@
       <a class="btn" href="./how.html">How it works</a>
     </div>
 
-    <dl class="stats">
-      {#each stats as s, i}
-        <div class="stat" style="--i:{i}">
-          <dt><span use:countUp={{ to: s.to, digits: s.digits, suffix: s.suffix }}>0</span></dt>
-          <dd>{s.text}</dd>
-        </div>
-      {/each}
+    <dl class="stats" aria-busy={!metrics}>
+      {#if metrics}
+        {#each stats as s, i}
+          <div class="stat" style="--i:{i}">
+            <dt><span use:countUp={{ to: s.to, digits: s.digits, suffix: s.suffix }}>0</span></dt>
+            <dd>{s.text}</dd>
+          </div>
+        {/each}
+      {:else}
+        {#each [0, 1, 2] as i}
+          <div class="stat" style="--i:{i}"><dt><span class="ph"></span></dt><dd><span class="ph line"></span><span class="ph line short"></span></dd></div>
+        {/each}
+      {/if}
     </dl>
   </div>
 </header>
@@ -145,7 +145,12 @@
   .btn.primary:hover { background: #ffd84a; }
 
   .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; margin: clamp(48px, 8vw, 88px) 0 0; background: rgba(255, 255, 255, 0.2); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: var(--radius); overflow: hidden; animation: up 0.9s var(--ease) 0.45s both; }
-  .stat { background: rgba(0, 39, 76, 0.88); backdrop-filter: blur(6px); padding: 22px 24px 24px; }
+  /* no backdrop-filter: blurring the animated lines behind it every frame made the hero animation stutter */
+  .stat { background: rgba(0, 39, 76, 0.92); padding: 22px 24px 24px; }
+  .ph { display: inline-block; width: 2.4em; height: 0.8em; border-radius: 6px; background: rgba(255, 255, 255, 0.14); animation: pulse 1.2s ease-in-out infinite alternate; }
+  .ph.line { display: block; width: 100%; height: 12px; margin: 6px 0; font-size: 14px; }
+  .ph.line.short { width: 60%; }
+  @keyframes pulse { to { opacity: 0.45; } }
   dt { font-family: var(--serif); font-size: clamp(36px, 5vw, 54px); font-weight: 600; color: var(--maize); line-height: 1; margin-bottom: 10px; }
   dd { margin: 0; font-size: 14px; color: #cbd8e6; line-height: 1.45; }
   @keyframes up { from { opacity: 0; transform: translateY(22px); } to { opacity: 1; transform: none; } }

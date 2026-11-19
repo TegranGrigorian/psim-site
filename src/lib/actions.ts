@@ -18,7 +18,8 @@ export function reveal(node: HTMLElement, opts: { delay?: number } = {}) {
 /** Counts a number up when visible. Sets textContent directly. */
 export function countUp(node: HTMLElement, p: { to: number; digits?: number; suffix?: string; prefix?: string }) {
   const d = p.digits ?? 0;
-  const write = (v: number) => (node.textContent = `${p.prefix ?? ''}${v.toFixed(d)}${p.suffix ?? ''}`);
+  const write = (v: number) => (node.textContent = Number.isFinite(v) ? `${p.prefix ?? ''}${v.toFixed(d)}${p.suffix ?? ''}` : '–');
+  if (!Number.isFinite(p.to)) { write(NaN); return {}; }
   if (matchMedia('(prefers-reduced-motion: reduce)').matches) { write(p.to); return {}; }
   write(0);
   let raf = 0;
@@ -40,6 +41,14 @@ export function countUp(node: HTMLElement, p: { to: number; digits?: number; suf
 /** Calls `cb(true)` when the node enters view and `cb(false)` when it leaves. */
 export function inView(node: HTMLElement, cb: (v: boolean) => void) {
   const io = new IntersectionObserver(([e]) => cb(e.isIntersecting), { threshold: 0.25 });
+  io.observe(node);
+  return { destroy: () => io.disconnect() };
+}
+
+/** Calls `cb` once, when the node comes within `margin` of the viewport. Used to load heavy parts on demand. */
+export function nearView(node: HTMLElement, cb: () => void) {
+  if (!('IntersectionObserver' in window)) { cb(); return {}; }
+  const io = new IntersectionObserver(([e]) => { if (e.isIntersecting) { io.disconnect(); cb(); } }, { rootMargin: '700px 0px' });
   io.observe(node);
   return { destroy: () => io.disconnect() };
 }
