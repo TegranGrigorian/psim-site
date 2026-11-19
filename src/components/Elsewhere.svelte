@@ -2,25 +2,29 @@
   import { reveal } from '../lib/actions';
   import { app } from '../lib/state.svelte';
   import { GROUP_LABEL, metricMeta } from '../lib/format';
-  import type { Bundle, CityIndex } from '../lib/types';
+  import { groupMetric } from '../lib/metrics';
+  import type { CityIndex, GroupMetrics } from '../lib/types';
 
-  let { a, b, ca, cb }: { a: Bundle; b: Bundle; ca: CityIndex; cb: CityIndex } = $props();
+  let { a, b, ca, cb }: { a: GroupMetrics; b: GroupMetrics; ca: CityIndex; cb: CityIndex } = $props();
 
   // Compare gaps, not raw minutes (PLAN.md §8): each group relative to undergraduates in its own city.
-  const ratios = (bd: Bundle) => {
-    const m = (g: string) => bd.groupMetrics.groups.find((x) => x.dimension === 'group' && x.value === g)!.metrics[app.metric].mean;
-    const base = m('undergraduate');
-    return Object.keys(GROUP_LABEL).map((g) => ({ g, r: m(g) / base }));
+  // A group is left out when either city lacks the number or the undergraduate value is zero (no ratio).
+  const ratio = (gm: GroupMetrics, g: string) => {
+    const v = groupMetric(gm, 'group', g, app.metric)?.mean, u = groupMetric(gm, 'group', 'undergraduate', app.metric)?.mean;
+    return v !== undefined && u ? v / u : NaN;
   };
-  const ra = $derived(ratios(a));
-  const rb = $derived(ratios(b));
-  const max = $derived(Math.max(...ra.map((x) => x.r), ...rb.map((x) => x.r)) * 1.06);
-  const x = (v: number) => `${((v - 1) / (max - 1)) * 100}%`;
+  const rows = $derived(Object.keys(GROUP_LABEL).map((g) => ({ g, r: ratio(a, g), o: ratio(b, g) })).filter((x) => Number.isFinite(x.r) && Number.isFinite(x.o)));
+  const ra = $derived(rows.map((x) => ({ g: x.g, r: x.r })));
+  const rb = $derived(rows.map((x) => ({ g: x.g, r: x.o })));
+  const max = $derived(Math.max(1.5, ...ra.map((x) => x.r), ...rb.map((x) => x.r)) * 1.06);
+  const min = $derived(Math.min(1, ...ra.map((x) => x.r), ...rb.map((x) => x.r)));
+  const x = (v: number) => `${((v - min) / (max - min)) * 100}%`;
   const meta = $derived(metricMeta(app.metric));
 </script>
 
 <div class="card el" use:reveal data-reveal>
   <p class="note">{meta.short}, shown as a multiple of what undergraduates experience in the same city (1.0× = parity).</p>
+  {#if !rows.length}<p class="note">Not enough data to compare on this measure.</p>{/if}
   <ul>
     {#each ra as row, i}
       {@const other = rb[i].r}

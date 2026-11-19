@@ -3,164 +3,217 @@
   import Nav from './components/Nav.svelte';
   import Hero from './components/Hero.svelte';
   import GapChart from './components/GapChart.svelte';
-  import SiteMap from './components/SiteMap.svelte';
   import TimeOfDay from './components/TimeOfDay.svelte';
   import Redesign from './components/Redesign.svelte';
   import Elsewhere from './components/Elsewhere.svelte';
   import Hypotheses from './components/Hypotheses.svelte';
+  import Pending from './components/Pending.svelte';
   import Footer from './components/Footer.svelte';
-  import { reveal } from './lib/actions';
+  import type SiteMapComponent from './components/SiteMap.svelte';
+  import { nearView, reveal } from './lib/actions';
   import { app } from './lib/state.svelte';
   import { METRICS } from './lib/format';
-  import { loadBundle, loadComparison, loadIndex } from './lib/data';
-  import type { Bundle, Comparison, Index } from './lib/types';
+  import { hasScenario, loadComparison, loadCore, loadGeo, loadIndex } from './lib/data';
+  import type { Comparison, Core, Geo, Index } from './lib/types';
 
+  // Nothing here waits on data before drawing: the hero paints at once, each section fills in when
+  // its (small) file arrives, and the map code (MapLibre) and map files load only near the map.
   let index = $state<Index>();
-  let bundles = $state<Record<string, Bundle>>({});
-  let comparison = $state<Comparison | null>(null);
+  let core = $state<Record<string, Core>>({});
+  let geo = $state<Record<string, Geo>>({});
+  let comparison = $state<Comparison | null>();
   let error = $state('');
+  let SiteMap = $state<typeof SiteMapComponent>();
+  let mapWanted = $state(false);
 
-  onMount(async () => {
-    try {
-      const idx = await loadIndex();
-      const pairs = idx.cities.flatMap((c) => c.scenarios.map((s) => [c.slug, s] as const));
-      const loaded = await Promise.all(pairs.map(([c, s]) => loadBundle(c, s)));
-      bundles = Object.fromEntries(pairs.map(([c, s], i) => [`${c}/${s}`, loaded[i]]));
-      comparison = await loadComparison('ann_arbor', 'redesign_v1');
-      index = idx;
-    } catch (e) {
-      error = String(e);
-    }
+  const keep = <T,>(store: Record<string, T>, key: string, p: Promise<T>) =>
+    p.then((v) => (store[key] = v)).catch((e) => (error = String(e)));
+
+  onMount(() => {
+    // started together with the index rather than after it: baseline Ann Arbor is the page's default
+    const first = loadCore(app.city, 'baseline');
+    loadIndex()
+      .then((idx) => {
+        index = idx;
+        if (!idx.cities.length) error = 'The data index lists no cities.';
+        else if (!hasScenario(idx, app.city, 'baseline')) app.city = idx.cities[0].slug;
+      })
+      .catch((e) => (error = String(e)));
+    first.catch(() => {}); // reported by the effect below if the index really lists it
   });
 
   const city = $derived(index?.cities.find((c) => c.slug === app.city));
-  const bundle = $derived(bundles[`${app.city}/${app.scenario}`] ?? bundles[`${app.city}/baseline`]);
-  const base = $derived(bundles[`${app.city}/baseline`]);
-  const hasRedesign = $derived(!!city?.scenarios.includes('redesign_v1'));
-  const second = $derived(index?.cities.find((c) => c.slug !== 'ann_arbor'));
+  const scenario = $derived(hasScenario(index, app.city, app.scenario) ? app.scenario : 'baseline');
+  const hasRedesign = $derived(hasScenario(index, app.city, 'redesign_v1'));
+  const second = $derived(index?.cities.find((c) => c.slug !== 'ann_arbor' && c.scenarios.includes('baseline')));
+  const aa = $derived(hasScenario(index, 'ann_arbor', 'baseline'));
+
+  $effect(() => {
+    if (!city) return;
+    for (const s of new Set(['baseline', scenario])) if (!core[`${city.slug}/${s}`]) keep(core, `${city.slug}/${s}`, loadCore(city.slug, s));
+  });
+  $effect(() => {
+    if (second && !core[`${second.slug}/baseline`]) keep(core, `${second.slug}/baseline`, loadCore(second.slug, 'baseline'));
+  });
+  $effect(() => {
+    if (hasRedesign && comparison === undefined) loadComparison('ann_arbor', 'redesign_v1').then((c) => (comparison = c));
+  });
+  $effect(() => {
+    if (!mapWanted || !city) return;
+    for (const s of new Set(['baseline', scenario])) if (!geo[`${city.slug}/${s}`]) keep(geo, `${city.slug}/${s}`, loadGeo(city.slug, s));
+  });
+  function wantMap() {
+    mapWanted = true;
+    import('./components/SiteMap.svelte').then((m) => (SiteMap = m.default)).catch((e) => (error = String(e)));
+  }
+
+  const base = $derived(city ? core[`${city.slug}/baseline`] : undefined);
+  const now = $derived(city ? core[`${city.slug}/${scenario}`] ?? base : undefined);
+  const geoNow = $derived(city ? geo[`${city.slug}/${scenario}`] ?? geo[`${city.slug}/baseline`] : undefined);
+  const geoBase = $derived(city ? geo[`${city.slug}/baseline`] : undefined);
+  const name = $derived(city?.display_name ?? 'Ann Arbor, MI');
 </script>
 
-{#if error}
-  <main class="wrap state"><h1>Data not found</h1><p>{error}</p><p class="note">Run <code>npm run fake-data</code> then <code>npm run sync-data</code>.</p></main>
-{:else if !index || !city || !bundle}
-  <main class="state"><span class="spin" aria-label="Loading"></span></main>
-{:else}
-  {#if index.fake}
-    <div class="fake" role="note"><b>Preview build.</b> Every number on this page is synthetic placeholder data, not a research result.</div>
-  {/if}
-  <Nav cities={index.cities} />
-  <div id="top"></div>
-  <Hero bundle={base} cityName={city.display_name} />
-
-  <main>
-    <section class="section" id="gap">
-      <div class="wrap">
-        <div class="kicker" use:reveal data-reveal><b>01</b> The gap</div>
-        <h2 use:reveal data-reveal>Same buses, different days</h2>
-        <p class="lede" use:reveal data-reveal>
-          Every persona makes the same weekly trips under the same timetable. What differs is where they live, where they go and when.
-          Pick a measure and a way of slicing the population.
-        </p>
-        <div class="metrics seg" role="group" aria-label="Metric">
-          {#each METRICS as m}
-            <button aria-pressed={app.metric === m.key} onclick={() => (app.metric = m.key)}>{m.short}</button>
-          {/each}
-        </div>
-        <GapChart bundle={base} />
-      </div>
-    </section>
-
-    <section class="section" id="where">
-      <div class="wrap">
-        <div class="kicker" use:reveal data-reveal><b>02</b> Where routes go</div>
-        <h2 use:reveal data-reveal>The map is not neutral</h2>
-        <p class="lede" use:reveal data-reveal>
-          Neighborhoods are shaded by how the simulated residents living there fare. Line weight on a route follows its weekday trips.
-        </p>
-        <SiteMap {bundle} {base} {city} {hasRedesign} />
-      </div>
-    </section>
-
-    <section class="section" id="when">
-      <div class="wrap">
-        <div class="kicker" use:reveal data-reveal><b>03</b> When they run</div>
-        <h2 use:reveal data-reveal>Service has a bedtime</h2>
-        <p class="lede" use:reveal data-reveal>
-          Failures cluster in the hours when service thins out. Groups whose work or study schedules fall there carry the cost.
-        </p>
-        <TimeOfDay bundle={bundle} />
-      </div>
-    </section>
-
-    {#if comparison}
-      <section class="section" id="redesign">
-        <div class="wrap">
-          <div class="kicker" use:reveal data-reveal><b>04</b> Who gets left out</div>
-          <h2 use:reveal data-reveal>Redrawing the network</h2>
-          <p class="lede" use:reveal data-reveal>
-            Redesign v1 edits the Ann Arbor timetable to add late-night Night Owl service on two corridors, then reruns the same simulation.
-            Did it help the people the baseline fails most, and what did it cost everyone else?
-          </p>
-          <Redesign {comparison} />
-        </div>
-      </section>
-    {/if}
-
-    {#if second && bundles['ann_arbor/baseline'] && bundles[`${second.slug}/baseline`]}
-      <section class="section" id="elsewhere">
-        <div class="wrap">
-          <div class="kicker" use:reveal data-reveal><b>05</b> Not inevitable</div>
-          <h2 use:reveal data-reveal>Another college town</h2>
-          <p class="lede" use:reveal data-reveal>
-            The same pipeline run on {second.display_name}. Towns differ in size and density, so the comparison is about the shape of the gaps rather than raw minutes.
-          </p>
-          <Elsewhere a={bundles['ann_arbor/baseline']} b={bundles[`${second.slug}/baseline`]} ca={index.cities[0]} cb={second} />
-        </div>
-      </section>
-    {/if}
-
-    <section class="section" id="hypotheses">
-      <div class="wrap">
-        <div class="kicker" use:reveal data-reveal><b>06</b> Stated up front</div>
-        <h2 use:reveal data-reveal>Hypotheses that can fail</h2>
-        <p class="lede" use:reveal data-reveal>Written before running anything. A hypothesis the data does not support is a finding, not a problem.</p>
-        <Hypotheses />
-      </div>
-    </section>
-
-    <section class="section" id="method">
-      <div class="wrap method">
-        <div>
-          <div class="kicker" use:reveal data-reveal><b>07</b> Method</div>
-          <h2 use:reveal data-reveal>How this was made</h2>
-        </div>
-        <div use:reveal data-reveal>
-          <ol>
-            <li><b>Personas.</b> 1,000 synthetic people per replicate, each with a group, a home and a workplace or campus anchor, drawn from Census, housing and enrollment data.</li>
-            <li><b>Trips.</b> A weekly routine per person: commute or class, and the return, with shift patterns setting departure times.</li>
-            <li><b>Routing.</b> Every trip routed door to door over GTFS and OpenStreetMap with r5py. A trip that cannot be completed counts as a failure, not a missing row.</li>
-            <li><b>Replication.</b> 100 replicates (seeds 42 to 141) give 95% intervals on every metric.</li>
-          </ol>
-          <h3>Limits, plainly</h3>
-          <ul>
-            <li>The model uses scheduled service, not real service. It does not capture lateness or crowding; ride-alongs address those.</li>
-            <li>Transit only. “Failure” means no transit option, not no way to travel.</li>
-            <li>Synthetic people show what the system’s design does to a plausible population, not what residents actually experience.</li>
-          </ul>
-          <a class="walk" href="./how.html">See the full walkthrough, step by step <span aria-hidden="true">→</span></a>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <Footer />
+{#if index?.fake}
+  <div class="fake" role="note"><b>Preview build.</b> The input data is still being checked, so these numbers are preliminary, not research results.</div>
 {/if}
+<Nav cities={index?.cities ?? []} />
+<div id="top"></div>
+<Hero metrics={base?.groupMetrics} cityName={name} />
+
+<main>
+  {#if error}
+    <div class="wrap"><div class="err card" role="alert"><b>Some data could not be loaded.</b> {error}</div></div>
+  {/if}
+
+  <section class="section" id="gap">
+    <div class="wrap">
+      <div class="kicker" use:reveal data-reveal><b>01</b> The gap</div>
+      <h2 use:reveal data-reveal>Same buses, different days</h2>
+      <p class="lede" use:reveal data-reveal>
+        Every persona makes the same weekly trips under the same timetable. What differs is where they live, where they go and when.
+        Pick a measure and a way of slicing the population.
+      </p>
+      <div class="metrics seg" role="group" aria-label="Metric">
+        {#each METRICS as m}
+          <button aria-pressed={app.metric === m.key} onclick={() => (app.metric = m.key)}>{m.short}</button>
+        {/each}
+      </div>
+      {#if base}<GapChart metrics={base.groupMetrics} />{:else}<div class="card skel" style="height:420px"></div>{/if}
+    </div>
+  </section>
+
+  <section class="section" id="where">
+    <div class="wrap">
+      <div class="kicker" use:reveal data-reveal><b>02</b> Where routes go</div>
+      <h2 use:reveal data-reveal>The map is not neutral</h2>
+      <p class="lede" use:reveal data-reveal>
+        Neighborhoods are shaded by how the simulated residents living there fare. Line weight on a route follows its weekday trips.
+      </p>
+      <div use:nearView={wantMap}>
+        {#if SiteMap && city && geoNow && geoBase}
+          <SiteMap bundle={geoNow} base={geoBase} {city} {hasRedesign} />
+        {:else}
+          <div class="card skel map-skel"><span>Loading the map…</span></div>
+        {/if}
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="when">
+    <div class="wrap">
+      <div class="kicker" use:reveal data-reveal><b>03</b> When they run</div>
+      <h2 use:reveal data-reveal>Service has a bedtime</h2>
+      <p class="lede" use:reveal data-reveal>
+        Failures cluster in the hours when service thins out. Groups whose work or study schedules fall there carry the cost.
+      </p>
+      {#if now}<TimeOfDay tod={now.tod} />{:else}<div class="card skel" style="height:380px"></div>{/if}
+    </div>
+  </section>
+
+  <section class="section" id="redesign">
+    <div class="wrap">
+      <div class="kicker" use:reveal data-reveal><b>04</b> Who gets left out</div>
+      <h2 use:reveal data-reveal>Redrawing the network</h2>
+      {#if hasRedesign && comparison}
+        <p class="lede" use:reveal data-reveal>
+          Redesign v1 edits the Ann Arbor timetable, then reruns the same simulation.
+          Did it help the people the baseline fails most, and what did it cost everyone else?
+        </p>
+        <Redesign {comparison} />
+      {:else}
+        <p class="lede" use:reveal data-reveal>
+          The plan: edit the Ann Arbor timetable where trips fail most, rerun the exact same simulated town, and see who gains and who loses.
+        </p>
+        <Pending title="Not simulated yet">
+          The redesigned network hasn’t been run through the simulation so far. This section will fill in after that run.
+        </Pending>
+      {/if}
+    </div>
+  </section>
+
+  <section class="section" id="elsewhere">
+    <div class="wrap">
+      <div class="kicker" use:reveal data-reveal><b>05</b> Not inevitable</div>
+      <h2 use:reveal data-reveal>Another college town</h2>
+      {#if second && aa && core['ann_arbor/baseline'] && core[`${second.slug}/baseline`] && index}
+        <p class="lede" use:reveal data-reveal>
+          The same pipeline run on {second.display_name}. Towns differ in size and density, so the comparison is about the shape of the gaps rather than raw minutes.
+        </p>
+        <Elsewhere a={core['ann_arbor/baseline'].groupMetrics} b={core[`${second.slug}/baseline`].groupMetrics} ca={index.cities.find((c) => c.slug === 'ann_arbor') ?? index.cities[0]} cb={second} />
+      {:else}
+        <p class="lede" use:reveal data-reveal>
+          The same pipeline will be run on a second college town, Madison, to see whether Ann Arbor’s gaps are a choice or a given.
+        </p>
+        <Pending title="Not simulated yet">
+          The comparison city hasn’t been run through the simulation so far. This section will fill in after that run.
+        </Pending>
+      {/if}
+    </div>
+  </section>
+
+  <section class="section" id="hypotheses">
+    <div class="wrap">
+      <div class="kicker" use:reveal data-reveal><b>06</b> Stated up front</div>
+      <h2 use:reveal data-reveal>Hypotheses that can fail</h2>
+      <p class="lede" use:reveal data-reveal>Written before running anything. A hypothesis the data does not support is a finding, not a problem.</p>
+      <Hypotheses />
+    </div>
+  </section>
+
+  <section class="section" id="method">
+    <div class="wrap method">
+      <div>
+        <div class="kicker" use:reveal data-reveal><b>07</b> Method</div>
+        <h2 use:reveal data-reveal>How this was made</h2>
+      </div>
+      <div use:reveal data-reveal>
+        <ol>
+          <li><b>Personas.</b> 1,000 synthetic people per replicate, each with a group, a home and a workplace or campus anchor, drawn from Census, housing and enrollment data.</li>
+          <li><b>Trips.</b> A weekly routine per person: commute or class, and the return, with shift patterns setting departure times.</li>
+          <li><b>Routing.</b> Every trip routed door to door over GTFS and OpenStreetMap with r5py. A trip that cannot be completed counts as a failure, not a missing row.</li>
+          <li><b>Replication.</b> 100 replicates (seeds 42 to 141) give 95% intervals on every metric.</li>
+        </ol>
+        <h3>Limits, plainly</h3>
+        <ul>
+          <li>The model uses scheduled service, not real service. It does not capture lateness or crowding; ride-alongs address those.</li>
+          <li>Transit only. “Failure” means no transit option, not no way to travel.</li>
+          <li>Synthetic people show what the system’s design does to a plausible population, not what residents actually experience.</li>
+        </ul>
+        <a class="walk" href="./how.html">See the full walkthrough, step by step <span aria-hidden="true">→</span></a>
+      </div>
+    </div>
+  </section>
+</main>
+
+<Footer />
 
 <style>
   .fake { background: var(--maize); color: var(--blue); font-size: 13px; text-align: center; padding: 7px var(--gutter); }
-  .state { min-height: 100vh; display: grid; place-content: center; text-align: center; background: var(--blue); color: #fff; padding: 24px; }
-  .spin { width: 34px; height: 34px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.2); border-top-color: var(--maize); animation: s 0.8s linear infinite; }
-  @keyframes s { to { transform: rotate(360deg); } }
+  .err { margin-top: 32px; padding: 14px 18px; border-color: #e0b4ab; background: #fbe7e3; color: #8e2a1c; font-size: 15px; }
+  .skel { background: linear-gradient(100deg, #fff 30%, #f3f0e6 50%, #fff 70%) 0 0 / 300% 100%; animation: shimmer 1.6s linear infinite; }
+  .map-skel { min-height: 520px; display: grid; place-items: center; color: var(--muted); font-size: 14px; }
+  @keyframes shimmer { to { background-position: -150% 0; } }
   .metrics { margin: 28px 0 18px; }
   .method { display: grid; grid-template-columns: 1fr 1.4fr; gap: clamp(28px, 6vw, 80px); }
   .method ol { padding-left: 1.2em; margin: 0 0 32px; display: grid; gap: 14px; }

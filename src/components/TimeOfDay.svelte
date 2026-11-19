@@ -2,16 +2,25 @@
   import { reveal } from '../lib/actions';
   import { app } from '../lib/state.svelte';
   import { HEAT, GROUP_LABEL, ramp } from '../lib/format';
-  import type { Bundle } from '../lib/types';
+  import type { TimeOfDay, TodHour } from '../lib/types';
 
-  let { bundle }: { bundle: Bundle } = $props();
+  let { tod }: { tod: TimeOfDay } = $props();
   let mode = $state<'failure_rate' | 'mean_wait'>('failure_rate');
-  let tip = $state<{ g: string; h: number; v: number } | null>(null);
+  let tip = $state<{ g: string; h: number; v: number | null; n: number } | null>(null);
 
   const order = Object.keys(GROUP_LABEL);
-  const series = $derived(order.map((g) => bundle.tod.series.find((s) => s.group === g && s.day_type === app.dayType)!));
-  const max = $derived(Math.max(...series.flatMap((s) => s.hours.map((h) => h[mode]))));
-  const fmtV = (v: number) => (mode === 'failure_rate' ? `${(v * 100).toFixed(0)}% of trips fail` : `${v.toFixed(1)} min wait`);
+  // Hours with no trips carry zeros that mean "no data", not "no failures" (SCHEMA.md §5.2).
+  // Wait times come from a smaller detailed sample, so an hour can have trips but no wait samples.
+  const has = (h: TodHour, m: typeof mode) => (m === 'failure_rate' ? (h.n_trips ?? 1) > 0 : (h.n_wait_samples ?? h.n_trips ?? 1) > 0);
+  const val = (h: TodHour | undefined, m: typeof mode) => (h && has(h, m) ? h[m] : null);
+  const series = $derived(
+    order
+      .map((g) => tod.series.find((s) => s.group === g && s.day_type === app.dayType))
+      .filter((s) => !!s)
+      .map((s) => ({ group: s.group, hours: Array.from({ length: 24 }, (_, h) => s.hours.find((x) => x.hour === h)) })),
+  );
+  const max = $derived(Math.max(1e-9, ...series.flatMap((s) => s.hours.map((h) => val(h, mode) ?? 0))));
+  const fmtV = (v: number | null) => (v === null ? 'no trips leave at this hour, so no data' : mode === 'failure_rate' ? `${(v * 100).toFixed(0)}% of trips fail` : `${v.toFixed(1)} min wait`);
   const hourLabel = (h: number) => (h === 0 ? '12a' : h < 12 ? `${h}a` : h === 12 ? '12p' : `${h - 12}p`);
 </script>
 
@@ -35,14 +44,17 @@
       {/each}
       {#each series as s, gi}
         <div class="gl">{GROUP_LABEL[s.group]}</div>
-        {#each s.hours as hr}
+        {#each s.hours as hr, h}
+          {@const v = val(hr, mode)}
+          {@const pick = () => (tip = { g: s.group, h, v, n: hr?.n_trips ?? 0 })}
           <button
             class="cell"
-            style="background:{ramp(HEAT, hr[mode] / max)}; --i:{hr.hour + gi * 2}"
-            aria-label="{GROUP_LABEL[s.group]}, {hourLabel(hr.hour)}: {fmtV(hr[mode])}"
-            onmouseenter={() => (tip = { g: s.group, h: hr.hour, v: hr[mode] })}
-            onfocus={() => (tip = { g: s.group, h: hr.hour, v: hr[mode] })}
-            onclick={() => (tip = { g: s.group, h: hr.hour, v: hr[mode] })}
+            class:nd={v === null}
+            style="background:{v === null ? '' : ramp(HEAT, v / max)}; --i:{h + gi * 2}"
+            aria-label="{GROUP_LABEL[s.group]}, {hourLabel(h)}: {fmtV(v)}"
+            onmouseenter={pick}
+            onfocus={pick}
+            onclick={pick}
           ></button>
         {/each}
       {/each}
@@ -50,9 +62,9 @@
   </div>
 
   <p class="readout" aria-live="polite">
-    {#if tip}<b>{GROUP_LABEL[tip.g]}</b> leaving at <b>{hourLabel(tip.h)}</b>: {fmtV(tip.v)}{:else}Hover or tap a cell. Columns are the hour a trip departs.{/if}
+    {#if tip}<b>{GROUP_LABEL[tip.g]}</b> leaving at <b>{hourLabel(tip.h)}</b>: {fmtV(tip.v)}{#if tip.v !== null && tip.n} <span class="n">({tip.n.toLocaleString()} simulated trips)</span>{/if}{:else}Hover or tap a cell. Columns are the hour a trip departs.{/if}
   </p>
-  <div class="key"><span>Lower</span><i style="background:linear-gradient(90deg,{HEAT.join(',')})"></i><span>Higher</span></div>
+  <div class="key"><span>Lower</span><i style="background:linear-gradient(90deg,{HEAT.join(',')})"></i><span>Higher</span><b class="nd"></b><span>No trips at this hour (no data)</span></div>
 </div>
 
 <style>
@@ -71,5 +83,9 @@
   .readout { margin: 18px 0 8px; min-height: 1.6em; font-size: 15px; }
   .key { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--muted); }
   .key i { width: 140px; height: 8px; border-radius: 4px; }
+  .key { flex-wrap: wrap; }
+  .key b { width: 16px; height: 12px; border-radius: 3px; margin-left: 12px; }
+  .nd { background: repeating-linear-gradient(135deg, #d9d8d4 0 2px, #f4f3f0 2px 6px); }
+  .readout .n { color: var(--muted); }
   @media (max-width: 640px) { .heat { grid-template-columns: 96px repeat(24, 22px); } .gl { font-size: 12px; } }
 </style>

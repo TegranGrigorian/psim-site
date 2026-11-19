@@ -8,22 +8,28 @@
 
   const rows = $derived(
     comparison.groups
-      .filter((g) => g.dimension === 'group')
-      .map((g) => ({ key: g.value, ...g.deltas[app.metric] })),
+      .filter((g) => g.dimension === 'group' && g.deltas[app.metric])
+      .map((g) => ({ key: g.value, ...g.deltas[app.metric]! })),
   );
-  const max = $derived(Math.max(...rows.flatMap((r) => [r.before, r.after])) * 1.05);
+  const max = $derived(Math.max(1e-9, ...rows.flatMap((r) => [r.before, r.after])) * 1.05);
   const w = (v: number) => `${(v / max) * 100}%`;
   const meta = $derived(metricMeta(app.metric));
-  const best = $derived([...rows].sort((a, b) => a.delta / a.before - b.delta / b.before)[0]);
-  const worst = $derived([...rows].sort((a, b) => b.delta / b.before - a.delta / a.before)[0]);
+  // relative change, or null when the starting value is zero (no percentage to give)
+  const rel = (r: { before: number; delta: number }) => (r.before ? r.delta / r.before : null);
+  const byRel = $derived(rows.filter((r) => rel(r) !== null).sort((a, b) => rel(a)! - rel(b)!));
+  const best = $derived(byRel[0]);
+  const worst = $derived(byRel[byRel.length - 1]);
+  const pctChange = (r: { before: number; delta: number }) => `${r.delta > 0 ? '+' : ''}${Math.round(rel(r)! * 100)}%`;
 </script>
 
 <div class="card re" use:reveal data-reveal>
-  <p class="sum">
-    {meta.short} for <b>{GROUP_LABEL[best.key].toLowerCase()}</b> goes from {fmt(app.metric, best.before)} to
-    <b>{fmt(app.metric, best.after)}</b> ({Math.round((best.delta / best.before) * 100)}%).
-    The group that moves least is {GROUP_LABEL[worst.key].toLowerCase()}, at {Math.round((worst.delta / worst.before) * 100)}%.
-  </p>
+  {#if best && worst && best !== worst}
+    <p class="sum">
+      {meta.short} for <b>{(GROUP_LABEL[best.key] ?? best.key).toLowerCase()}</b> goes from {fmt(app.metric, best.before)} to
+      <b>{fmt(app.metric, best.after)}</b> ({pctChange(best)}).
+      At the other end are {(GROUP_LABEL[worst.key] ?? worst.key).toLowerCase()}, at {pctChange(worst)}.
+    </p>
+  {/if}
   <ul>
     {#each rows as r (r.key)}
       <li>

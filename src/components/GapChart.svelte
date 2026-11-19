@@ -3,18 +3,22 @@
   import { reveal } from '../lib/actions';
   import { app } from '../lib/state.svelte';
   import { DIMENSIONS, GROUP_COLOR, fmt, label, metricMeta } from '../lib/format';
-  import type { Bundle } from '../lib/types';
+  import { metricOf } from '../lib/metrics';
+  import type { GroupMetrics, Interval } from '../lib/types';
 
-  let { bundle }: { bundle: Bundle } = $props();
+  let { metrics }: { metrics: GroupMetrics } = $props();
 
+  // groups with no data for this metric are left out of the file (or null), so they are left out here too
   const rows = $derived(
-    bundle.groupMetrics.groups
+    metrics.groups
       .filter((g) => g.dimension === app.dim)
-      .map((g) => ({ key: g.value, n: g.n_personas_mean, ...g.metrics[app.metric] }))
+      .map((g) => ({ key: g.value, n: g.n_personas_mean, iv: metricOf(g.metrics, app.metric) }))
+      .filter((r): r is { key: string; n: number; iv: Interval } => !!r.iv)
+      .map((r) => ({ key: r.key, n: r.n, ...r.iv }))
       .sort((a, b) => b.mean - a.mean),
   );
-  const max = $derived(Math.max(...rows.map((r) => r.ci_high)) * 1.06);
-  const pos = (v: number) => `${(v / max) * 100}%`;
+  const max = $derived(Math.max(1e-9, ...rows.map((r) => r.ci_high)) * 1.06);
+  const pos = (v: number) => `${(Math.max(0, v) / max) * 100}%`;
   const meta = $derived(metricMeta(app.metric));
   const color = (k: string) => (app.dim === 'group' ? GROUP_COLOR[k] : 'var(--blue)');
 </script>
@@ -26,9 +30,10 @@
         <button aria-pressed={app.dim === d.key} onclick={() => (app.dim = d.key)}>{d.label}</button>
       {/each}
     </div>
-    <p class="note">{meta.label}. Bars show the mean across {bundle.groupMetrics.n_replicates} replicates; whiskers are the 95% interval.</p>
+    <p class="note">{meta.label}. Bars show the mean across {metrics.n_replicates} replicates; whiskers are the 95% interval.</p>
   </div>
 
+  {#if !rows.length}<p class="note">No data for this measure yet.</p>{/if}
   <ul>
     {#each rows as r (r.key)}
       <li animate:flip={{ duration: 450 }}>

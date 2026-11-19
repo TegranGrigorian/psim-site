@@ -1,14 +1,17 @@
 <script lang="ts">
   import * as maplibregl from 'maplibre-gl';
+  import 'maplibre-gl/dist/maplibre-gl.css';
   import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
   import { onMount } from 'svelte';
   import { app } from '../lib/state.svelte';
   import { HEAT, fmt, metricMeta, METRICS } from '../lib/format';
   import { reducedMotion } from '../lib/curves';
   import { busesAt, chevron, DASH_FRAMES, tracks, type Track } from '../lib/routeAnim';
-  import type { Bundle, CityIndex, MetricKey } from '../lib/types';
+  import { metricOf } from '../lib/metrics';
+  import type { CityIndex, Geo, HoodFeature, MetricKey } from '../lib/types';
 
-  let { bundle, base, city, hasRedesign }: { bundle: Bundle; base: Bundle; city: CityIndex; hasRedesign: boolean } = $props();
+  // Loaded on demand (see App.svelte), together with MapLibre and the map files.
+  let { bundle, base, city, hasRedesign }: { bundle: Geo; base: Geo; city: CityIndex; hasRedesign: boolean } = $props();
 
   // The inlined worker breaks under the production bundler; serve it as its own asset.
   maplibregl.setWorkerUrl(workerUrl);
@@ -22,45 +25,37 @@
   let el: HTMLDivElement;
   let map: maplibregl.Map | undefined;
   let ready = $state(false);
-  let markers: maplibregl.Marker[] = [];
   let selected = $state<string | null>(null);
   let showRoutes = $state(true);
   let tip = $state<{ x: number; y: number; name: string; trips?: number; isNew: boolean } | null>(null);
   let ts: Track[] = [];
 
   // one colour scale for baseline and redesign, so switching scenarios shows real change
-  const vals = $derived([bundle, base].flatMap((b) => b.hoods.features.map((f) => f.properties.metrics[app.metric].mean)));
-  const lo = $derived(Math.min(...vals));
-  const hi = $derived(Math.max(...vals));
+  const mv = (f: HoodFeature, m: MetricKey) => metricOf(f.properties.metrics, m)?.mean ?? null;
+  const vals = $derived([bundle, base].flatMap((b) => b.hoods.features.map((f) => mv(f, app.metric))).filter((v) => v !== null));
+  const lo = $derived(vals.length ? Math.min(...vals) : 0);
+  const hi = $derived(vals.length ? Math.max(...vals) : 1);
   const meta = $derived(metricMeta(app.metric));
 
   const sel = $derived(bundle.hoods.features.find((f) => f.properties.neighborhood === selected)?.properties);
   const ranked = $derived(
-    [...bundle.hoods.features].sort((a, b) => b.properties.metrics[app.metric].mean - a.properties.metrics[app.metric].mean),
+    bundle.hoods.features.filter((f) => mv(f, app.metric) !== null).sort((a, b) => mv(b, app.metric)! - mv(a, app.metric)!),
   );
 
   const fillExpr = (a: number, b: number): any => {
     const span = b - a || 1;
-    return ['interpolate', ['linear'], ['get', 'v'], ...HEAT.flatMap((c, i) => [a + (span * i) / (HEAT.length - 1), c])];
+    // neighborhoods without data for this metric have no `v` and are drawn grey
+    return ['case', ['has', 'v'], ['interpolate', ['linear'], ['get', 'v'], ...HEAT.flatMap((c, i) => [a + (span * i) / (HEAT.length - 1), c])], '#d9d6cc'];
   };
 
-  function dataFor(b: Bundle, m: MetricKey) {
+  function dataFor(b: Geo, m: MetricKey) {
     return {
       ...b.hoods,
-      features: b.hoods.features.map((f, i) => ({ ...f, id: i, properties: { ...f.properties, metrics: undefined, v: f.properties.metrics[m].mean } })),
+      features: b.hoods.features.map((f, i) => {
+        const v = mv(f, m);
+        return { ...f, id: i, properties: { neighborhood: f.properties.neighborhood, name: f.properties.name, ...(v === null ? {} : { v }) } };
+      }),
     } as any;
-  }
-
-  function buildMarkers() {
-    markers.forEach((k) => k.remove());
-    markers = bundle.hoods.features.map((f) => {
-      const ring = f.geometry.coordinates[0];
-      const c = [ring.reduce((a, p) => a + p[0], 0) / ring.length, ring.reduce((a, p) => a + p[1], 0) / ring.length] as [number, number];
-      const d = document.createElement('div');
-      d.className = 'hood-label';
-      d.textContent = f.properties.name;
-      return new maplibregl.Marker({ element: d }).setLngLat(c).addTo(map!);
-    });
   }
 
   onMount(() => {
@@ -118,7 +113,9 @@
       m.addLayer({ id: 'bus-halo', type: 'circle', source: 'buses', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 6, 15, 11], 'circle-color': '#ffffff', 'circle-opacity': 0.9, 'circle-blur': 0.3 } });
       m.addLayer({ id: 'bus-dot', type: 'circle', source: 'buses', paint: { 'circle-radius': ['interpolate', ['linear'], ['zoom'], 11, 3.5, 15, 7], 'circle-color': ['case', ['boolean', ['get', 'is_new'], false], NEW_ROUTE, ['match', ['get', 'agency'], 'umich', AGENCY.umich, AGENCY.theride]], 'circle-stroke-color': '#ffffff', 'circle-stroke-width': 1.5 } });
 
-      buildMarkers();
+      // Neighborhood names as a map layer, so overlapping labels hide each other instead of piling up.
+      const font = (m.getStyle().layers.find((l: any) => l.type === 'symbol' && Array.isArray(l.layout?.['text-font'])) as any)?.layout['text-font'] ?? ['Noto Sans Regular'];
+      m.addLayer({ id: 'hood-name', type: 'symbol', source: 'hoods', minzoom: 12, layout: { 'text-field': ['get', 'name'], 'text-font': font, 'text-size': 11.5, 'symbol-placement': 'point' }, paint: { 'text-color': '#00274C', 'text-halo-color': '#ffffff', 'text-halo-width': 1.6 } });
 
       let hover: number | null = null;
       const setOn = (id: number | null, on: boolean) => id !== null && m.setFeatureState({ source: 'hoods', id }, { on });
@@ -152,7 +149,6 @@
     city.slug;
     if (!ready || !map) return;
     selected = null;
-    buildMarkers();
     map.fitBounds(city.bbox, { padding: 24, duration: 900 });
   });
   $effect(() => {
@@ -208,26 +204,27 @@
     <aside class="panel card">
       {#if sel}
         <h3>{sel.name}</h3>
-        <p class="note">About {Math.round(sel.n_personas_mean)} of 1,000 personas live here.</p>
+        <p class="note">About {Math.round(sel.n_personas_mean)} of 1,000 personas live here.{#if sel.n_personas_mean < 10} With so few, these numbers swing a lot from run to run.{/if}</p>
         <dl>
           {#each METRICS.slice(0, 4) as m}
+            {@const iv = metricOf(sel.metrics, m.key)}
             <div class:active={m.key === app.metric}>
               <dt>{m.short}</dt>
-              <dd>{fmt(m.key, sel.metrics[m.key].mean)} <small>({fmt(m.key, sel.metrics[m.key].ci_low, false)}–{fmt(m.key, sel.metrics[m.key].ci_high, false)})</small></dd>
+              <dd>{#if iv}{fmt(m.key, iv.mean)} <small>({fmt(m.key, iv.ci_low, false)}–{fmt(m.key, iv.ci_high, false)})</small>{:else}<small>no data</small>{/if}</dd>
             </div>
           {/each}
         </dl>
         <button class="clear" onclick={() => (selected = null)}>Clear selection</button>
       {:else}
         <h3>Ranked, worst first</h3>
-        <p class="note">Select a neighborhood on the map, or from this list.</p>
+        <p class="note">Select a neighborhood on the map, or from this list. Neighborhoods are Census tracts{#if bundle.hoods.outline_note}; their outlines are approximate, drawn around the homes in each tract{/if}.</p>
         <ol>
           {#each ranked as f, i (f.properties.neighborhood)}
             <li>
               <button onclick={() => (selected = f.properties.neighborhood)}>
                 <span class="rk">{i + 1}</span>
                 <span class="nm">{f.properties.name}</span>
-                <span class="v">{fmt(app.metric, f.properties.metrics[app.metric].mean)}</span>
+                <span class="v">{fmt(app.metric, mv(f, app.metric)!)}</span>
               </button>
             </li>
           {/each}
@@ -238,7 +235,6 @@
 </div>
 
 <style>
-  :global(.hood-label) { pointer-events: none; font-size: 11.5px; font-weight: 600; color: var(--blue); text-shadow: 0 0 3px #fff, 0 0 3px #fff, 0 0 5px #fff; white-space: nowrap; }
   .controls { display: flex; gap: 12px 18px; flex-wrap: wrap; align-items: center; margin-bottom: 18px; }
   .toggle { font-size: 14px; display: inline-flex; gap: 8px; align-items: center; cursor: pointer; accent-color: var(--blue); }
   .grid { display: grid; grid-template-columns: 1fr 320px; gap: 18px; }
