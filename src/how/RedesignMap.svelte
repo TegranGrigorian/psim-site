@@ -1,13 +1,15 @@
 <script lang="ts">
   import * as maplibregl from 'maplibre-gl';
+  import 'maplibre-gl/dist/maplibre-gl.css';
   import workerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?url';
   import { onMount } from 'svelte';
   import { HEAT } from '../lib/format';
   import { reducedMotion } from '../lib/curves';
   import { busesAt, DASH_FRAMES, prep, sliceTo, tracks } from '../lib/routeAnim';
-  import type { Bundle } from '../lib/types';
+  import { metricOf } from '../lib/metrics';
+  import type { Geo } from '../lib/types';
 
-  let { before, after }: { before: Bundle; after: Bundle } = $props();
+  let { before, after }: { before: Geo; after: Geo } = $props();
   maplibregl.setWorkerUrl(workerUrl);
 
   const BASEMAP = 'https://tiles.openfreemap.org/styles/positron';
@@ -17,10 +19,11 @@
   let el: HTMLDivElement;
   let setView: (a: boolean) => void = () => {};
 
-  const fr = (b: Bundle) => Object.fromEntries(b.hoods.features.map((f) => [f.properties.neighborhood, f.properties.metrics.failure_rate.mean]));
+  // neighborhoods without a failure rate in either scenario are left grey and out of the list
+  const fr = (b: Geo) => Object.fromEntries(b.hoods.features.flatMap((f) => { const v = metricOf(f.properties.metrics, 'failure_rate'); return v ? [[f.properties.neighborhood, v.mean]] : []; })) as Record<string, number>;
   const vb = $derived(fr(before)), va = $derived(fr(after));
   const all = $derived([...Object.values(vb), ...Object.values(va)]);
-  const lo = $derived(Math.min(...all)), hi = $derived(Math.max(...all));
+  const lo = $derived(all.length ? Math.min(...all) : 0), hi = $derived(all.length ? Math.max(...all) : 1);
   const newRoutes = $derived(after.routes.features.filter((f) => f.properties.is_new));
   const fmt = (v: number) => `${(v * 100).toFixed(1)}%`;
 
@@ -36,7 +39,8 @@
     // blend the two scenarios' failure rates by k (0 = before, 1 = after) inside the style expression
     const fill = (k: number): any => {
       const v = ['+', ['*', 1 - k, ['get', 'vb']], ['*', k, ['get', 'va']]];
-      return ['interpolate', ['linear'], v, ...HEAT.flatMap((c, i) => [lo + ((hi - lo) * i) / (HEAT.length - 1), c])];
+      const span = hi - lo || 1;
+      return ['case', ['all', ['has', 'vb'], ['has', 'va']], ['interpolate', ['linear'], v, ...HEAT.flatMap((c, i) => [lo + (span * i) / (HEAT.length - 1), c])], '#d9d6cc'];
     };
 
     function draw(now: number) {
@@ -67,7 +71,7 @@
 
     map.on('load', () => {
       const firstLabel = map.getStyle().layers.find((l) => l.type === 'symbol')?.id;
-      map.addSource('rm-hoods', { type: 'geojson', data: fc(before.hoods.features.map((f) => ({ ...f, properties: { name: f.properties.name, vb: vb[f.properties.neighborhood], va: va[f.properties.neighborhood] } }))) });
+      map.addSource('rm-hoods', { type: 'geojson', data: fc(before.hoods.features.map((f) => ({ ...f, properties: { name: f.properties.name, ...(f.properties.neighborhood in vb ? { vb: vb[f.properties.neighborhood] } : {}), ...(f.properties.neighborhood in va ? { va: va[f.properties.neighborhood] } : {}) } }))) });
       map.addSource('rm-routes', { type: 'geojson', data: before.routes as any });
       map.addSource('rm-new', { type: 'geojson', data: fc([]) });
       map.addSource('rm-bus', { type: 'geojson', data: fc([]) });
@@ -85,6 +89,7 @@
 
   const choose = (a: boolean) => { touched = true; setView(a); };
   const changes = $derived(before.hoods.features
+    .filter((f) => f.properties.neighborhood in vb && f.properties.neighborhood in va)
     .map((f) => ({ name: f.properties.name, b: vb[f.properties.neighborhood], a: va[f.properties.neighborhood] }))
     .sort((x, y) => (x.a - x.b) - (y.a - y.b)));
 </script>

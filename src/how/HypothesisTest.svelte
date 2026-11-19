@@ -22,6 +22,10 @@
   const fmt = (v: number) => `${v.toFixed(T.unit === '%' ? 1 : 0)}${T.unit === '%' ? '%' : ' min'}`;
   const significant = $derived(r.p < 0.05);
   const meaningful = $derived(Math.abs(r.dbar) >= T.meaningful);
+  // a real gap in the opposite direction to the one the hypothesis predicts counts against it
+  const reversed = $derived(T.expect !== 0 && Math.sign(r.dbar) !== T.expect);
+  const nTowns = $derived(T.a.runs.length);
+  const units = $derived(T.unit === '%' ? 'points' : 'minutes');
 
   // group A's curve starts on top of B ("fair") and slides to where the simulation put it
   const posA = new Tween(0, { duration: 1100, easing: cubicInOut });
@@ -100,7 +104,7 @@
         {#if step === 1}
           <g transition:fade>
             <line class="gap" x1={vx(muB)} x2={vx(muA)} y1="30" y2="30" marker-end="url(#arr)" />
-            <text class="gapt" x={clampX((vx(muB) + vx(muA)) / 2)} y="20">gap = {fmt(Math.abs(r.dbar))}</text>
+            <text class="gapt" x={clampX((vx(muB) + vx(muA)) / 2)} y="20">gap = {T.unit === '%' ? `${Math.abs(r.dbar).toFixed(1)} points` : fmt(Math.abs(r.dbar))}</text>
           </g>
         {:else}
           <text class="badge good" x={clampX(vx(muB))} y="24" transition:fade>Good result: no gap</text>
@@ -129,8 +133,8 @@
         {:else}
           <g class="off" transform="translate({r.t > 0 ? W - PAD : PAD} 0)">
             <path d="M{r.t > 0 ? -34 : 34} 104 L0 104" class="offarrow" marker-end="url(#arr2)" />
-            <text x={r.t > 0 ? -6 : 6} y="90" text-anchor={r.t > 0 ? 'end' : 'start'}>our gap: {Math.round(tAbs)} SE away</text>
-            <text class="small" x={r.t > 0 ? -6 : 6} y="126" text-anchor={r.t > 0 ? 'end' : 'start'}>off the chart, {Math.round(tAbs / (2 * LIM))}× its width</text>
+            <text x={r.t > 0 ? -6 : 6} y="90" text-anchor={r.t > 0 ? 'end' : 'start'}>our gap: {tAbs > 1000 ? 'over 1,000' : Math.round(tAbs)} SE away</text>
+            <text class="small" x={r.t > 0 ? -6 : 6} y="126" text-anchor={r.t > 0 ? 'end' : 'start'}>off the chart{tAbs > 1000 ? '' : `, ${Math.max(1, Math.round(tAbs / (2 * LIM)))}× its width`}</text>
           </g>
         {/if}
         <text class="axl" x={PAD} y="18">units: standard errors (SE) from fair</text>
@@ -140,7 +144,7 @@
     </div>
     <div class="legend">
       {#if step < 2}
-        <span><i class="a"></i>{T.a.label}</span><span><i class="b"></i>{T.b.label}</span><span class="m">each curve: 100 simulated towns</span>
+        <span><i class="a"></i>{T.a.label}</span><span><i class="b"></i>{T.b.label}</span><span class="m">each curve: {nTowns} simulated towns</span>
       {:else}
         <span><i class="n"></i>Gaps we’d expect from luck alone if the network were fair</span><span><i class="o"></i>Our measured gap</span>
       {/if}
@@ -153,7 +157,7 @@
         <p><b>A good result for riders</b> is no gap: if the network served everyone equally, {T.a.label.toLowerCase()} and {T.b.label.toLowerCase()} would sit on top of each other. Statisticians call this the <b>null hypothesis</b>: the “nothing is going on” starting assumption we try to knock down.</p>
         <Tex block tex={'H_0:\\ \\mu_{A} - \\mu_{B} = 0 \\qquad\\text{vs}\\qquad H_1:\\ \\mu_{A} - \\mu_{B} \\neq 0'} />
       {:else if step === 1}
-        <p>The simulation puts {T.a.label.toLowerCase()} at <b>{fmt(muA)}</b> and {T.b.label.toLowerCase()} at <b>{fmt(muB)}</b>, averaged over 100 towns. In each town we subtract one from the other, then average those gaps:</p>
+        <p>The simulation puts {T.a.label.toLowerCase()} at <b>{fmt(muA)}</b> and {T.b.label.toLowerCase()} at <b>{fmt(muB)}</b>, averaged over {nTowns} towns. In each town we subtract one from the other, then average those gaps:</p>
         <Tex block tex={`\\bar d = \\frac{1}{n}\\sum_{i=1}^{n}\\left(x_{A,i} - x_{B,i}\\right) = ${r.dbar.toFixed(2)}\\ \\text{${T.unit === '%' ? 'points' : 'min'}}`} />
       {:else if step === 2}
         <p>Is that gap big compared with how much it wobbles from town to town? Divide it by its <b>standard error</b>, the typical size of a gap that is just luck. The result, <b>t</b>, says how many standard errors our gap is from “fair.”</p>
@@ -163,12 +167,13 @@
         <Tex block tex={`p = P\\left(|T_{${r.df}}| \\ge ${tAbs.toFixed(1)}\\right) ${r.p < 0.001 ? '\\approx' : '='} ${texP(r.p)}`} />
         <p class="plain">{r.p < 1e-6 ? 'In plain terms: effectively impossible by chance.' : r.p < 0.05 ? `In plain terms: about ${Math.max(1, Math.round(r.p * 1000))} in 1,000. Unlikely to be luck.` : `In plain terms: about ${Math.round(r.p * 100)} in 100. Easily luck.`}</p>
       {:else}
-        <div class="verdict" class:yes={significant && meaningful} class:meh={significant && !meaningful}>
-          <b>{significant && meaningful ? 'Real and large' : significant ? 'Real but small' : 'No detectable difference'}</b>
+        <div class="verdict" class:yes={significant && meaningful && !reversed} class:meh={significant && (!meaningful || reversed)}>
+          <b>{significant && reversed ? 'Real, but the other way round' : significant && meaningful ? 'Real and large' : significant ? 'Real but small' : 'No detectable difference'}</b>
           <p>
-            {#if significant && meaningful}The gap is {Math.round(tAbs)} standard errors from fair (p {r.p < 0.001 ? '< 0.001' : `= ${r.p.toFixed(3)}`}) and bigger than the {T.meaningful} {T.unit === '%' ? 'points' : 'minutes'} we decided in advance would matter to a rider. We reject “fair.” This supports {T.hyp}.
-            {:else if significant}The gap is unlikely to be luck, but at {Math.abs(r.dbar).toFixed(1)} {T.unit === '%' ? 'points' : 'minutes'} it is below the {T.meaningful} we said would matter. Statistically real, practically minor.
-            {:else}A gap of {Math.abs(r.dbar).toFixed(1)} {T.unit === '%' ? 'points' : 'minutes'} sits well inside what luck produces (p = {r.p.toFixed(2)}). We can’t say these two differ. That isn’t proof they are equal, just no evidence they aren’t.{/if}
+            {#if significant && reversed}The gap is unlikely to be luck (p {r.p < 0.001 ? '< 0.001' : `= ${r.p.toFixed(3)}`}), but it runs the opposite way to the prediction: {T.a.label.toLowerCase()} come out <b>better</b> than {T.b.label.toLowerCase()}, by {Math.abs(r.dbar).toFixed(1)} {units}. This counts against {T.hyp}.
+            {:else if significant && meaningful}The gap is {tAbs > 1000 ? 'more than 1,000' : Math.round(tAbs)} standard errors from fair (p {r.p < 0.001 ? '< 0.001' : `= ${r.p.toFixed(3)}`}) and bigger than the {T.meaningful} {units} we decided in advance would matter to a rider. We reject “fair.”{#if T.expect}{" "}This supports {T.hyp}.{/if}
+            {:else if significant}The gap is unlikely to be luck, but at {Math.abs(r.dbar).toFixed(1)} {units} it is below the {T.meaningful} we said would matter. Statistically real, practically minor.
+            {:else}A gap of {Math.abs(r.dbar).toFixed(1)} {units} sits well inside what luck produces (p = {r.p.toFixed(2)}). We can’t say these two differ. That isn’t proof they are equal, just no evidence they aren’t.{/if}
           </p>
           <Tex tex={`\\text{effect size: } d = \\bar d / s_d = ${r.cohen.toFixed(1)}`} />
         </div>

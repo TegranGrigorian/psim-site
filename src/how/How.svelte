@@ -2,9 +2,9 @@
   import { onMount } from 'svelte';
   import Nav from '../components/Nav.svelte';
   import Footer from '../components/Footer.svelte';
+  import Pending from '../components/Pending.svelte';
   import Pipeline from './Pipeline.svelte';
   import Sampling from './Sampling.svelte';
-  import Places from './Places.svelte';
   import Routine from './Routine.svelte';
   import TripStory from './TripStory.svelte';
   import DepartureWindow from './DepartureWindow.svelte';
@@ -17,19 +17,31 @@
   import Verdicts from './Verdicts.svelte';
   import OnTime from './OnTime.svelte';
   import FixIt from './FixIt.svelte';
+  import type PlacesComponent from './Places.svelte';
+  import type RedesignMapComponent from './RedesignMap.svelte';
   import { tests, verdicts } from './evidence';
-  import { reveal } from '../lib/actions';
-  import { loadBundle, loadComparison } from '../lib/data';
-  import type { Bundle, Comparison } from '../lib/types';
+  import { nearView, reveal } from '../lib/actions';
+  import { hasScenario, loadComparison, loadCore, loadGeo, loadIndex, loadInputs } from '../lib/data';
+  import type { Bundle, Comparison, Core, Geo, Index } from '../lib/types';
   import type { Inputs } from './inputs';
 
-  let bundle = $state<Bundle>();
-  let madison = $state<Bundle>();
+  // Only the small baseline summaries load up front. The step 2 map (MapLibre plus the input
+  // locations) and anything for scenarios or cities the index doesn't list load on demand or not at all.
+  let index = $state<Index>();
+  let core = $state<Core>();
+  let madison = $state<Core>();
+  let baseGeo = $state<Geo>();
   let redesign = $state<Bundle>();
-  let comparison = $state<Comparison | null>(null);
+  let comparison = $state<Comparison | null>();
   let inputs = $state<Inputs>();
+  let Places = $state<typeof PlacesComponent>();
+  let RedesignMap = $state<typeof RedesignMapComponent>();
+  let error = $state('');
   let progress = $state(0);
   let active = $state('overview');
+
+  const hasRedesign = $derived(hasScenario(index, 'ann_arbor', 'redesign_v1'));
+  const hasMadison = $derived(hasScenario(index, 'madison', 'baseline'));
 
   const STEPS = [
     ['why', 'Why simulate?'],
@@ -49,13 +61,26 @@
     ['words', 'Words to know'],
   ];
 
+  function wantPlaces() {
+    Promise.all([import('./Places.svelte'), loadInputs<Inputs>('ann_arbor')])
+      .then(([m, inp]) => { inputs = inp; Places = m.default; })
+      .catch((e) => (error = `Step 2 map: ${e}`));
+  }
+  let fixWanted = $state(false);
+  $effect(() => {
+    // the redesign files (including both scenarios' route maps) only matter once step 12 is near
+    if (!fixWanted || !hasRedesign || redesign) return;
+    Promise.all([loadCore('ann_arbor', 'redesign_v1'), loadGeo('ann_arbor', 'redesign_v1'), loadGeo('ann_arbor', 'baseline'), loadComparison('ann_arbor', 'redesign_v1'), import('./RedesignMap.svelte')])
+      .then(([c, g, bg, cmp, m]) => { baseGeo = bg; comparison = cmp; RedesignMap = m.default; redesign = { ...c, ...g }; })
+      .catch((e) => (error = `Step 12: ${e}`));
+  });
+  $effect(() => {
+    if (hasMadison && !madison) loadCore('madison', 'baseline').then((c) => (madison = c)).catch(() => {});
+  });
+
   onMount(() => {
-    const base = `${import.meta.env.BASE_URL}data/ann_arbor`;
-    loadBundle('ann_arbor', 'baseline').then((b) => (bundle = b));
-    loadBundle('madison', 'baseline').then((b) => (madison = b)).catch(() => {});
-    loadBundle('ann_arbor', 'redesign_v1').then((b) => (redesign = b)).catch(() => {});
-    loadComparison('ann_arbor', 'redesign_v1').then((c) => (comparison = c));
-    fetch(`${base}/inputs.json`).then((r) => r.json()).then((j) => (inputs = j)).catch(() => {});
+    loadCore('ann_arbor', 'baseline').then((c) => (core = c)).catch((e) => (error = String(e)));
+    loadIndex().then((i) => (index = i)).catch((e) => (error = String(e)));
 
     const onScroll = () => {
       const h = document.documentElement;
@@ -69,6 +94,9 @@
     queueMicrotask(() => STEPS.forEach(([id]) => { const el = document.getElementById(id); if (el) io.observe(el); }));
     return () => { removeEventListener('scroll', onScroll); io.disconnect(); };
   });
+
+  const theTests = $derived(core ? tests(core.groupMetrics) : []);
+  const vs = $derived(core ? verdicts(core.groupMetrics, madison?.groupMetrics, comparison) : []);
 </script>
 
 <div class="bar" style="transform:scaleX({progress})"></div>
@@ -152,12 +180,19 @@
         <h2>Give everyone a home and a destination</h2>
         <p>
           Each persona gets a <b>home</b> and an <b>anchor</b>: the place they go most, like a job or a classroom building.
-          Homes come from housing data; a dorm with 1,500 beds is picked far more often than a street of 200 houses.
-          Workers are matched to workplaces the same way, by number of jobs.
+          Homes are drawn in proportion to housing: a city block with a 1,500-bed dorm is picked far more often than a block
+          of a dozen houses. Workers are matched to workplaces the same way, by number of jobs, and students to campus
+          buildings by how big the building is.
         </p>
-        <p>Undergraduates mostly land in dorms near campus. Shift workers end up at hospitals, malls and warehouses. The lines show each person’s main trip.</p>
+        <p>
+          The locations are real public records: homes from the 2020 Census count of housing on each city block, jobs from the
+          Census Bureau’s count of jobs on each block, and campus buildings from OpenStreetMap, the free public map of the world.
+        </p>
+        <p>Students live in dorms or rentals and head to campus. Staff go to university jobs, shift workers to places with night shifts, and retired residents have no fixed destination. The lines show each person’s main trip.</p>
       </div>
-      {#if inputs}<Places {inputs} />{/if}
+      <div use:nearView={wantPlaces}>
+        {#if Places && inputs}<Places {inputs} />{:else}<div class="card wait" style="height:640px">Loading the map…</div>{/if}
+      </div>
     </div>
   </section>
 
@@ -265,7 +300,7 @@
         </p>
         <a class="cta" href="./index.html#gap">See the results →</a>
       </div>
-      {#if bundle}<Aggregate {bundle} />{/if}
+      {#if core}<Aggregate metrics={core.groupMetrics} />{:else}<div class="card wait" style="height:420px">{error ? 'The summary file could not be loaded.' : 'Loading…'}</div>{/if}
     </div>
   </section>
 
@@ -280,7 +315,11 @@
           likely a gap that size would be if the network really were fair. Click through the five steps, or pick another comparison.
         </p>
       </div>
-      {#if bundle}<HypothesisTest tests={tests(bundle)} />{/if}
+      {#if theTests.length}
+        <HypothesisTest tests={theTests} />
+      {:else if core}
+        <Pending>The summary files don’t yet have the numbers this test needs. It will appear after the next simulation run.</Pending>
+      {:else}<div class="card wait" style="height:560px">{error ? 'The summary file could not be loaded.' : 'Loading…'}</div>{/if}
     </div>
   </section>
 
@@ -295,7 +334,7 @@
           (you can move the bar to see how much the answer depends on it).
         </p>
       </div>
-      {#if bundle}<OnTime {bundle} />{/if}
+      {#if core}<OnTime metrics={core.groupMetrics} />{/if}
     </div>
   </section>
 
@@ -306,22 +345,22 @@
         <h2>What we’d know</h2>
         <p class="lede">
           Each hypothesis from the top of the page, with the evidence and the test behind its verdict. These verdicts are worked out
-          automatically from the summary files, so they will update themselves once the real simulation replaces the placeholder data.
+          automatically from the summary files, so they update themselves after every simulation run. The current run is
+          preliminary (fewer runs than planned, and input data still being checked), so read these as a first look, not a conclusion.
         </p>
       </div>
-      {#if bundle}
-        {@const vs = verdicts(bundle, madison, comparison)}
-        <Verdicts verdicts={vs} />
+      {#if core}
+        <Verdicts verdicts={vs} nRep={core.groupMetrics.n_replicates} preliminary={!!index?.fake} />
         <div class="meaning" use:reveal data-reveal>
           <p class="num">So what?</p>
           <ul>
             {#each vs as v}
-              <li><b>{v.id}</b> {v.status === 'Supported' ? 'held up' : v.status === 'Mixed' ? 'partly held up' : 'did not hold up'}: {v.claim.charAt(0).toLowerCase() + v.claim.slice(1)}</li>
+              <li><b>{v.id}</b> {v.status === 'Supported' ? 'held up' : v.status === 'Mixed' ? 'partly held up' : v.status === 'Pending' ? 'is still waiting for data' : 'did not hold up'}: {v.claim.charAt(0).toLowerCase() + v.claim.slice(1)}</li>
             {/each}
           </ul>
           <div class="todo">
             <b>Interpretation</b>
-            <p>Placeholder. The author’s own reading of what these results mean for the student and resident imaginaries of Ann Arbor goes here once the real simulation has run.</p>
+            <p>Placeholder. The author’s own reading of what these results mean for the student and resident imaginaries of Ann Arbor goes here once the full set of simulation runs is done.</p>
           </div>
         </div>
       {/if}
@@ -338,7 +377,9 @@
           change the timetable there, rerun the exact same towns, and compare.
         </p>
       </div>
-      {#if bundle && redesign && comparison}<FixIt before={bundle} after={redesign} {comparison} />{/if}
+      <div use:nearView={() => (fixWanted = true)}>
+        {#if core}<FixIt before={core} beforeGeo={baseGeo} after={redesign} {comparison} {RedesignMap} />{/if}
+      </div>
     </div>
   </section>
 
@@ -396,5 +437,7 @@
   .meaning li b { color: var(--blue); margin-right: 4px; }
   .todo { border: 2px dashed var(--rule); border-radius: 12px; padding: 14px 16px; }
   .todo p { margin: 4px 0 0; color: var(--muted); font-size: 15px; }
+  .wait { display: grid; place-items: center; color: var(--muted); font-size: 14px; background: linear-gradient(100deg, #fff 30%, #f3f0e6 50%, #fff 70%) 0 0 / 300% 100%; animation: shimmer 1.6s linear infinite; }
+  @keyframes shimmer { to { background-position: -150% 0; } }
   @media (max-width: 900px) { .two { grid-template-columns: 1fr; } .text { position: static; } }
 </style>

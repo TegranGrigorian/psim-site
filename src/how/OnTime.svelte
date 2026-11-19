@@ -5,21 +5,30 @@
   import { normalPdf, normInv, oneSampleT, texP } from '../lib/stats';
   import { GROUP_COLOR } from '../lib/format';
   import Tex from './Tex.svelte';
-  import { onTime, runs } from './evidence';
-  import type { Bundle } from '../lib/types';
+  import Pending from '../components/Pending.svelte';
+  import { groupMetric } from '../lib/metrics';
+  import { nRuns, onTime, runs } from './evidence';
+  import type { GroupMetrics } from '../lib/types';
 
-  let { bundle }: { bundle: Bundle } = $props();
+  let { metrics }: { metrics: GroupMetrics } = $props();
 
-  const WHO = [
+  // on_time_rate is null until the delay model has run; only groups that have it get a tab
+  const WHO = $derived([
     { key: 'undergraduate', label: 'Undergraduates' },
     { key: 'graduate', label: 'Graduate students' },
-  ];
+  ].filter((w) => onTime(metrics, w.key)));
+  // what the summaries can already say without the delay model: trips to class or work that can't be made at all
+  const required = $derived([
+    { key: 'undergraduate', label: 'undergraduates' },
+    { key: 'graduate', label: 'graduate students' },
+  ].map((w) => ({ ...w, iv: groupMetric(metrics, 'group', w.key, 'required_failure_rate') })).filter((w) => w.iv));
   let who = $state(0);
   let target = $state(95);
   const BUFFER = 5; // minutes needed to walk in and sit down
   const SD_MIN = 7; // spread of arrival times, minutes (illustrative)
 
-  const iv = $derived(onTime(bundle, WHO[who].key));
+  // only read inside the {#if WHO.length} branch below, so never null when used
+  const iv = $derived(onTime(metrics, WHO[who]?.key ?? '')!);
   const rate = $derived(iv.mean);
 
   // One semester of class trips: minutes of slack before class (negative = late).
@@ -61,8 +70,8 @@
     });
   });
 
-  // across 100 towns
-  const reps = $derived(runs(iv, 300 + who).map((v) => v * 100));
+  // across the simulated towns (one per replicate)
+  const reps = $derived(runs(iv, 300 + who, false, nRuns(metrics)).map((v) => v * 100));
   const test = $derived(oneSampleT(reps, target));
   const verdict = $derived(test.m > target && test.pAbove < 0.05 ? 'reliable' : test.m < target && test.pBelow < 0.05 ? 'unreliable' : 'unclear');
   const D0 = 85, D1 = 100, H2 = 150;
@@ -76,6 +85,7 @@
   });
 </script>
 
+{#if WHO.length}
 <div class="card ot" use:reveal data-reveal use:inView={(v) => { if (v && !started) { started = true; play(); } }}>
   <div class="meas" bind:clientWidth={cw}></div>
   <div class="seg" role="group" aria-label="Student group">
@@ -105,7 +115,7 @@
     <span class="late"><b>{Math.round(share('late') * 100)}%</b> late</span>
   </div>
 
-  <h4>2 · Across 100 simulated towns <small>share of class trips on time in each town</small></h4>
+  <h4>2 · Across {reps.length} simulated towns <small>share of class trips on time in each town</small></h4>
   <label class="thr">Our bar for “reliable”: <b>{target}%</b> on time <input type="range" min="85" max="99" step="1" bind:value={target} /></label>
   <svg viewBox="0 0 {W2} {H2}" role="img" aria-label="Distribution of on-time rates against the reliability bar">
     <rect class="pass" x={bx(target)} y="10" width={W2 - bx(target)} height={H2 - 32} />
@@ -133,6 +143,26 @@
   </div>
   <p class="note">Uses scheduled times only. Real buses run late; the ride-along fieldwork measures how much that would pull these numbers down.</p>
 </div>
+{:else}
+  <div use:reveal data-reveal>
+    <Pending title="Not measured yet">
+      Arriving on time depends on how late buses run, not just on the timetable. That part of the simulation (the delay model)
+      hasn’t run yet, so this test will appear after the next simulation run. The bar is already fixed: {target}% of class trips
+      with five minutes to spare.
+    </Pending>
+    {#if required.length}
+      <div class="known card">
+        <b>What we can already say</b>
+        <p>
+          Even on the timetable alone, before any delays,
+          {#each required as w, i}{i ? (i === required.length - 1 ? ' and ' : ', ') : ''}<strong>{(w.iv!.mean * 100).toFixed(1)}%</strong> of {w.label}’{/each}
+          class and work trips can’t be made by bus at all within the time limits.
+          {#if required.some((w) => w.iv!.mean > (100 - target) / 100)}That alone is more than the {100 - target}% of trips the bar allows to miss.{/if}
+        </p>
+      </div>
+    {/if}
+  </div>
+{/if}
 
 <style>
   .ot { padding: clamp(16px, 3vw, 28px); }
@@ -166,4 +196,8 @@
   .verdict.unreliable { background: #fbe7e3; border-color: #c0392b; }
   .verdict.unclear { background: var(--maize-soft); border-color: var(--maize); }
   .note { margin-top: 12px; }
+  .known { margin-top: 14px; padding: 16px 18px; }
+  .known b { font-family: var(--serif); font-size: 19px; }
+  .known p { margin: 4px 0 0; color: #36424f; font-size: 15.5px; }
+  .known strong { color: var(--blue); }
 </style>

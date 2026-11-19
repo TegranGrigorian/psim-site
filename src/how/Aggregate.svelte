@@ -3,11 +3,15 @@
   import { GROUP_COLOR, GROUP_LABEL } from '../lib/format';
   import { reducedMotion } from '../lib/curves';
   import { normalish, rng } from '../lib/rng';
-  import type { Bundle } from '../lib/types';
+  import { groupMetric } from '../lib/metrics';
+  import type { GroupMetrics } from '../lib/types';
 
-  let { bundle }: { bundle: Bundle } = $props();
+  let { metrics }: { metrics: GroupMetrics } = $props();
 
-  const GROUPS = ['undergraduate', 'graduate', 'university_staff', 'resident_worker', 'shift_worker', 'retired'];
+  const ALL = ['undergraduate', 'graduate', 'university_staff', 'resident_worker', 'shift_worker', 'retired'];
+  const m = (g: string) => ({ fail: groupMetric(metrics, 'group', g, 'failure_rate'), time: groupMetric(metrics, 'group', g, 'total_minutes') });
+  // a group the summary has no numbers for is simply not drawn
+  const GROUPS = $derived(ALL.filter((g) => m(g).fail && m(g).time));
   const SHORT: Record<string, string> = { undergraduate: 'Undergrad', graduate: 'Grad', university_staff: 'Staff', resident_worker: 'Resident', shift_worker: 'Shift', retired: 'Retired' };
   const PER = 10;
 
@@ -15,11 +19,11 @@
   const chips = $derived.by(() => {
     const r = rng(7);
     return GROUPS.flatMap((g, gi) => {
-      const m = bundle.groupMetrics.groups.find((x) => x.dimension === 'group' && x.value === g)!.metrics;
-      const nFail = Math.round(m.failure_rate.mean * PER);
+      const { fail, time } = m(g);
+      const nFail = Math.round(fail!.mean * PER);
       return Array.from({ length: PER }, (_, k) => ({
         g, gi, k, fail: k >= PER - nFail,
-        min: Math.max(8, Math.round(normalish(r, m.total_minutes.mean, m.total_minutes.mean * 0.22))),
+        min: Math.max(8, Math.round(normalish(r, time!.mean, time!.mean * 0.22))),
         sx: 4 + r() * 82, sy: 4 + r() * 80,
       }));
     });
@@ -28,7 +32,7 @@
     const ok = chips.filter((c) => c.g === g && !c.fail);
     return { mean: ok.reduce((a, c) => a + c.min, 0) / Math.max(1, ok.length), fail: PER - ok.length };
   }));
-  const maxAvg = $derived(Math.max(...avg.map((a) => a.mean)));
+  const maxAvg = $derived(Math.max(1, ...avg.map((a) => a.mean)));
 
   let phase = $state<'scatter' | 'sort' | 'avg'>('scatter');
   let timers: number[] = [];

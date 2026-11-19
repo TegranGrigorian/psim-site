@@ -2,14 +2,14 @@
   import { reveal } from '../lib/actions';
   import type { Verdict } from './evidence';
 
-  let { verdicts }: { verdicts: Verdict[] } = $props();
+  let { verdicts, nRep, preliminary = false }: { verdicts: Verdict[]; nRep: number; preliminary?: boolean } = $props();
 
   const METHOD: Record<string, string> = {
     H1: 'Paired t-test on travel time and failure rate; later a regression controlling for distance.',
     H2: 'Rank groups by failure rate, then test the top two against each other.',
     H3: 'Compare how far staff sit from the student average and from the resident average.',
     H4: 'Compare the best-to-worst neighborhood spread with the student–resident gap.',
-    H5: 'Same pipeline on Madison; compare the gap ratios, not raw minutes.',
+    H5: 'Same pipeline on Madison; compare the gap ratios, not raw minutes (percentage points if a rate is near zero).',
     H6: 'Before/after on the same towns; the 95% interval of each change must exclude zero.',
     H7: 'One-sided t-test of each student group’s on-time rate against a 95% bar.',
   };
@@ -20,15 +20,16 @@
   <span class="s">{count('Supported')} supported</span>
   <span class="m">{count('Mixed')} mixed</span>
   <span class="n">{count('Not supported')} not supported</span>
-  <em>computed from placeholder data</em>
+  {#if count('Pending')}<span class="p">{count('Pending')} waiting for data</span>{/if}
+  <em>computed from {nRep} simulation runs{preliminary ? ' on preliminary input data' : ''}</em>
 </div>
 
 <ul>
   {#each verdicts as v, i}
-    <li class="card" use:reveal={{ delay: (i % 3) * 90 }} data-reveal>
+    <li class="card" class:wait={v.status === 'Pending'} use:reveal={{ delay: (i % 3) * 90 }} data-reveal>
       <div class="hd">
         <span class="id">{v.id}</span>
-        <span class="stamp" class:s={v.status === 'Supported'} class:m={v.status === 'Mixed'} class:n={v.status === 'Not supported'} style="--i:{i}">{v.status}</span>
+        <span class="stamp" class:s={v.status === 'Supported'} class:m={v.status === 'Mixed'} class:n={v.status === 'Not supported'} class:p={v.status === 'Pending'} style="--i:{i}">{v.status === 'Pending' ? 'Waiting for data' : v.status}</span>
       </div>
       <p class="claim">{v.claim}</p>
       <p class="ev">{v.evidence}</p>
@@ -43,6 +44,8 @@
   .tally .s, .stamp.s { background: #dcf1e5; color: #0a6b45; }
   .tally .m, .stamp.m { background: var(--maize-soft); color: #6b5400; }
   .tally .n, .stamp.n { background: #fbe7e3; color: #8e2a1c; }
+  .tally .p, .stamp.p { background: #ebe8de; color: #5d6877; }
+  li.wait { background: rgba(255, 255, 255, 0.55); border-style: dashed; }
   .tally em { font-weight: 400; color: var(--muted); font-size: 13px; }
   ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
   li { padding: 18px; display: flex; flex-direction: column; gap: 8px; }

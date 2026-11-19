@@ -3,23 +3,23 @@
 
   const STAGES = [
     {
-      key: 'data', title: 'Public data', tool: 'Collected', status: 'Sample data', icon: 'data',
+      key: 'data', title: 'Public data', tool: 'Collected', status: 'Preliminary', icon: 'data',
       plain: 'Facts about the real city: how many people live where, where the jobs are, how many students live in dorms, and the official bus timetables and street map.',
       inn: 'Census tables, housing and job counts, university enrollment, TheRide and U-M timetables (GTFS), OpenStreetMap',
       out: 'housing.csv, workplaces.csv, campus_locations.csv',
     },
     {
-      key: 'gen', title: 'Make the people', tool: 'psim-tools · Rust', status: 'In progress', icon: 'people',
+      key: 'gen', title: 'Make the people', tool: 'psim-tools · Rust', status: 'Built', icon: 'people',
       plain: 'Invents 1,000 believable residents that match the real mix, gives each a home, a destination and a weekly schedule. Steps 1 to 3 below.',
       inn: 'The tables from public data, plus a seed number', out: 'personas.csv (who), trips.csv (when and where to)',
     },
     {
-      key: 'eng', title: 'Ride the buses', tool: 'psim-engine · Python + R5', status: 'Planned', icon: 'bus',
+      key: 'eng', title: 'Ride the buses', tool: 'psim-engine · Python + R5', status: 'In progress', icon: 'bus',
       plain: 'Takes every planned trip and works out, minute by minute, how it would go on the real bus schedule, or that it can’t be done. Steps 4 and 5.',
       inn: 'trips.csv, bus timetables, street map', out: 'trip_results (minutes walking, waiting, riding, transfers, or failed)',
     },
     {
-      key: 'ana', title: 'Sum it up', tool: 'psim-tools · Rust', status: 'Planned', icon: 'chart',
+      key: 'ana', title: 'Sum it up', tool: 'psim-tools · Rust', status: 'Built', icon: 'chart',
       plain: 'Groups a million trip results by type of person, neighborhood and time of day, and averages them across 100 runs. Steps 6 and 8.',
       inn: 'All trip results from 100 runs', out: 'Small summary files: group averages with uncertainty ranges',
     },
@@ -81,7 +81,7 @@
   .st-built { background: #dcf1e5; color: #0a6b45; }
   .st-inprogress { background: var(--maize-soft); color: #6b5400; }
   .st-planned { background: #e6edf6; color: #2f4f75; }
-  .st-sampledata { background: #f6e3d6; color: #8a3d0c; }
+  .st-preliminary { background: #f6e3d6; color: #8a3d0c; }
 
   .flow { position: relative; align-self: center; height: 4px; margin: 0 4px; background: repeating-linear-gradient(90deg, #cfc9b8 0 6px, transparent 6px 11px); }
   .flow i { position: absolute; top: -3px; left: 0; width: 10px; height: 10px; border-radius: 50%; background: var(--orange); animation: go 2.4s linear infinite; }
